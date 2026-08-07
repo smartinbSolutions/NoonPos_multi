@@ -1,0 +1,88 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@font-face {
+  font-family: "DigitMono";
+  font-style: normal;
+  font-weight: 400 600;
+  font-display: swap;
+  src:
+    local("SFMono-Regular"), local("Menlo"), local("Monaco"), local("Consolas"),
+    local("Liberation Mono"), local("Courier New");
+  unicode-range: U+0030-0039;
+}
+
+@font-face {
+  font-family: "DigitMono";
+  font-style: normal;
+  font-weight: 700 900;
+  font-display: swap;
+  src:
+    local("SFMono-Regular"), local("Menlo"), local("Monaco"), local("Consolas"),
+    local("Liberation Mono"), local("Courier New");
+  unicode-range: U+0030-0039;
+}
+@media print {
+  @page {
+    size: A4;
+    margin: 0;
+  }
+
+  html,
+  body {
+    margin: 0 !important;
+    padding: 0 !important;
+    height: 297mm;
+    overflow: hidden;
+  }
+}
+body {
+  margin: 0;
+  font-family:
+    "DigitMono", "Plus Jakarta Sans", "IBM Plex Sans Arabic", sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+html[lang="ar"] body {
+  font-family: "DigitMono", "Almarai", sans-serif;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+code {
+  font-family:
+    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
+    "Courier New", monospace;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f5f9;
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, #282c34, #282c34);
+  border-radius: 10px;
+  border: 2px solid #f1f5f9;
+  transition: 0.3s;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, #282c34, #282c34);
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
