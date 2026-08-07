@@ -121,7 +121,7 @@
     "@fontsource/plus-jakarta-sans": "^5.2.8",
     "@phosphor-icons/react": "^2.1.10",
     "@serialport/parser-readline": "^13.0.0",
-    "@smartpos/db-setup": "*",
+    "@noonpos/db-setup": "*",
     "better-sqlite3": "^12.10.0",
     "cors": "^2.8.6",
     "crypto": "^1.0.1",

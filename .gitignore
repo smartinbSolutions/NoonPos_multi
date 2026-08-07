@@ -1,3 +1,4 @@
+packages/db-setup/bin
 # Logs
 logs
 *.log

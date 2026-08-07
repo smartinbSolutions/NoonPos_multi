@@ -1,5 +1,5 @@
 {
-  "name": "@smartpos/db-setup-cli",
+  "name": "@noonpos/db-setup-cli",
   "version": "1.0.0",
   "main": "index.js"
 }
