@@ -68,12 +68,15 @@ export async function createDatabase(paths) {
     } else {
       console.log(`[db-setup] Creating role "${APP_USER_NAME}"...`);
       appUserPassword = crypto.randomBytes(24).toString("base64url");
-      // Password is passed as a query parameter, not interpolated — this
-      // is the one place user-controllable-looking data (a generated
-      // secret) goes into a query, so we parameterize it properly.
+      // Postgres's CREATE ROLE ... PASSWORD clause does not accept a
+      // parameterized placeholder ($1) — it requires a literal string,
+      // which is a limitation of that specific SQL grammar, not a
+      // general restriction on parameterized queries. Embedding it
+      // directly is safe here specifically because base64url-encoded
+      // output can only ever contain [A-Za-z0-9_-], never a quote or
+      // backslash character — unlike genuinely user-supplied input.
       await client.query(
-        `CREATE ROLE ${APP_USER_NAME} WITH LOGIN PASSWORD $1`,
-        [appUserPassword]
+        `CREATE ROLE ${APP_USER_NAME} WITH LOGIN PASSWORD '${appUserPassword}'`
       );
     }
 
@@ -84,7 +87,7 @@ export async function createDatabase(paths) {
     );
 
     // Persist the app_user credentials into the admin config so future
-    // runs (and setupSchema.js) can reuse them without regenerating.
+    // runs (and runMigrations.js) can reuse them without regenerating.
     if (!roleAlreadyExists) {
       saveAdminConfig(paths, {
         ...adminConfig,
