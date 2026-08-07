@@ -8,6 +8,7 @@ import { pathToFileURL } from "node:url";
 import registerAllIPC from "./backend/registerAllIPC";
 import activateLicense from "./main/license/activateLicense";
 import verifyLicenseFile from "./main/license/verifyLicenseFile";
+import { testConnection } from "@smartpos/db-setup";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -113,6 +114,8 @@ function registerLicenseIPC() {
 }
 
 app.whenReady().then(async () => {
+  console.log(testConnection());
+
   registerAppFileProtocol();
   registerLicenseIPC();
 

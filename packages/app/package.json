@@ -1,0 +1,134 @@
+{
+  "name": "noon_pos",
+  "productName": "NOON POS",
+  "version": "1.0.0",
+  "description": "Professional POS System",
+  "main": ".vite/build/main.js",
+  "private": true,
+  "scripts": {
+    "start": "electron-forge start",
+    "package": "electron-forge package",
+    "make": "electron-forge make",
+    "publish": "electron-forge publish",
+    "lint": "echo \"No linting configured\"",
+    "dist": "electron-builder",
+    "dist:win": "electron-builder --win",
+    "dist:mac": "electron-builder --mac",
+    "dist:linux": "electron-builder --linux"
+  },
+  "build": {
+    "appId": "com.devzerosh.pos",
+    "productName": "POS System",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      ".vite/build/**/*",
+      ".vite/renderer/**/*",
+      "package.json",
+      "node_modules/**/*"
+    ],
+    "asar": true,
+    "win": {
+      "icon": "build/icon.ico",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "POS System",
+      "deleteAppDataOnUninstall": false,
+      "artifactName": "POS-System-Setup-${version}.exe"
+    },
+    "mac": {
+      "icon": "build/icon.icns",
+      "category": "public.app-category.business",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ],
+      "artifactName": "POS-System-${version}-mac.${ext}"
+    },
+    "dmg": {
+      "sign": false
+    },
+    "linux": {
+      "icon": "build/icon.png",
+      "category": "Office",
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "deb",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "POS-System-${version}.${ext}"
+    }
+  },
+  "keywords": [
+    "POS",
+    "ERP",
+    "Accounting",
+    "Inventory"
+  ],
+  "author": {
+    "name": "DevZeroSh",
+    "email": "m.shahrour.work@gmail.com"
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "@electron-forge/cli": "^7.11.1",
+    "@electron-forge/maker-deb": "^7.11.1",
+    "@electron-forge/maker-dmg": "^7.11.2",
+    "@electron-forge/maker-rpm": "^7.11.1",
+    "@electron-forge/maker-squirrel": "^7.11.1",
+    "@electron-forge/maker-zip": "^7.11.2",
+    "@electron-forge/plugin-auto-unpack-natives": "^7.11.1",
+    "@electron-forge/plugin-fuses": "^7.11.1",
+    "@electron-forge/plugin-vite": "^7.11.1",
+    "@electron/fuses": "^1.8.0",
+    "electron": "^30.5.1",
+    "electron-builder": "^26.8.1",
+    "electron-icon-builder": "^2.0.1",
+    "vite": "^5.4.21"
+  },
+  "dependencies": {
+    "@fontsource/almarai": "^5.2.8",
+    "@fontsource/ibm-plex-sans-arabic": "^5.2.9",
+    "@fontsource/plus-jakarta-sans": "^5.2.8",
+    "@phosphor-icons/react": "^2.1.10",
+    "@serialport/parser-readline": "^13.0.0",
+    "@smartpos/db-setup": "*",
+    "better-sqlite3": "^12.10.0",
+    "cors": "^2.8.6",
+    "crypto": "^1.0.1",
+    "electron-squirrel-startup": "^1.0.1",
+    "exceljs": "^4.4.0",
+    "node-machine-id": "^1.1.12",
+    "react-router-dom": "^7.14.2",
+    "serialport": "^13.0.0"
+  }
+}

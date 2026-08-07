@@ -1,0 +1,5 @@
+{
+  "name": "@smartpos/db-setup-cli",
+  "version": "1.0.0",
+  "main": "index.js"
+}
