@@ -8,13 +8,10 @@ import path from "node:path";
 
 export function getPaths() {
   return {
-    dataDir: "C:\\ProgramData\\NoonPos\\pgdata",
-    // binDir is the DESTINATION — where the bundled Postgres binaries get
-    // copied TO on the customer's machine, not where they ship inside
-    // your app bundle. See getBundledBinSourceDir() for the source.
-    binDir: "C:\\Program Files\\NoonPos\\pgbin\\bin",
-    installDir: "C:\\Program Files\\NoonPos\\pgbin",
-    configDir: "C:\\ProgramData\\NoonPos\\config",
+    dataDir: "C:\\ProgramData\\NoonPosData\\pgdata",
+    binDir: "C:\\Program Files\\NoonPosData\\pgbin\\bin",
+    installDir: "C:\\Program Files\\NoonPosData\\pgbin",
+    configDir: "C:\\ProgramData\\NoonPosData\\config",
   };
 }
 
