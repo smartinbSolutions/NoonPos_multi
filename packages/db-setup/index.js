@@ -1,12 +1,12 @@
-export function testConnection() {
-  return "db-setup module is reachable!";
-}
 // packages/db-setup/index.js
+import path from "node:path";
 import { initDataDirectory } from "./steps/initDataDirectory.js";
 import { registerService } from "./steps/registerService.js";
+import { configureNetworking } from "./steps/configureNetworking.js";
 import { configureFirewall } from "./steps/configureFirewall.js";
 import { createDatabase } from "./steps/createDatabase.js";
 import { setupSchema } from "./steps/setupSchema.js";
+import { getHostStatus } from "./steps/checkStatus.js";
 import { loadAdminConfig } from "./configStore.js";
 
 const DEFAULT_PORT = 5432;
@@ -15,9 +15,10 @@ const DEFAULT_PORT = 5432;
  * Runs the full host setup sequence, in dependency order:
  *   1. initDataDirectory  — copy bundled Postgres binaries, run initdb
  *   2. registerService    — register + start Postgres as a background service
- *   3. configureFirewall  — open the port so other terminals can reach it
- *   4. createDatabase     — create the app database + scoped app_user
- *   5. setupSchema        — create/update all tables
+ *   3. configureNetworking — make Postgres itself accept remote connections
+ *   4. configureFirewall  — open the port so other terminals can reach it
+ *   5. createDatabase     — create the app database + scoped app_user
+ *   6. setupSchema        — create/update all tables
  *
  * Safe to call multiple times — every step is independently idempotent,
  * so re-running this after a previous partial or full run only does the
@@ -38,12 +39,40 @@ export async function setupDatabaseHost(
 
   const { paths } = await initDataDirectory(appResourcesPath);
   await registerService(paths.dataDir);
+  await configureNetworking(paths.dataDir);
   await configureFirewall(port);
   const appCredentials = await createDatabase(paths);
-  await setupSchema(paths);
+
+  // schema/ ships as a sibling folder alongside bin/ inside
+  // appResourcesPath — same resolution base used for the Postgres
+  // binaries, whether running in dev (db-setup's own package folder)
+  // or packaged (the folder next to the .exe).
+  const schemaDir = path.join(appResourcesPath, "schema");
+  await setupSchema(paths, schemaDir);
 
   console.log("[db-setup] Host setup complete.");
   return appCredentials;
+}
+
+/**
+ * Returns this platform's paths (dataDir, binDir, configDir, etc.)
+ * without running any setup. Needed by callers that want to check
+ * status (getHostStatus) or connection info (getAppConnectionInfo)
+ * without triggering initDataDirectory's side effects.
+ */
+export async function getPlatformPaths() {
+  const platform =
+    process.platform === "win32"
+      ? await import("./platform/windows.js")
+      : process.platform === "darwin"
+        ? await import("./platform/mac.js")
+        : null;
+
+  if (!platform) {
+    throw new Error(`Unsupported platform: ${process.platform}`);
+  }
+
+  return platform.getPaths();
 }
 
 /**
@@ -72,7 +101,9 @@ export function getAppConnectionInfo(paths) {
 export {
   initDataDirectory,
   registerService,
+  configureNetworking,
   configureFirewall,
   createDatabase,
   setupSchema,
+  getHostStatus,
 };

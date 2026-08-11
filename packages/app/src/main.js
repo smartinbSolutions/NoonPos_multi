@@ -8,7 +8,8 @@ import { pathToFileURL } from "node:url";
 import registerAllIPC from "./backend/registerAllIPC";
 import activateLicense from "./main/license/activateLicense";
 import verifyLicenseFile from "./main/license/verifyLicenseFile";
-import { testConnection } from "@noonpos/db-setup";
+import { hasDbConfig } from "./main/db/dbConnectionConfig";
+import registerDbSetupIPC from "./main/db/registerDbSetupIPC";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -106,18 +107,22 @@ function registerLicenseIPC() {
     const result = await activateLicense(licenseKey);
 
     if (result.success && mainWindow) {
-      loadRendererRoute(mainWindow, "/");
+      loadRendererRoute(mainWindow, resolveInitialRoute({ valid: true }));
     }
 
     return result;
   });
 }
 
+function resolveInitialRoute(licenseStatus) {
+  if (!licenseStatus.valid) return "/activation";
+  if (!hasDbConfig()) return "/db-setup";
+  return "/";
+}
 app.whenReady().then(async () => {
-  console.log(testConnection());
-
   registerAppFileProtocol();
   registerLicenseIPC();
+  registerDbSetupIPC();
 
   try {
     registerAllIPC();
@@ -147,12 +152,12 @@ app.whenReady().then(async () => {
   );
 
   const licenseStatus = await verifyLicenseFile();
-  createWindow(licenseStatus.valid ? "/" : "/activation");
+  createWindow(resolveInitialRoute(licenseStatus));
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) {
       verifyLicenseFile().then((status) => {
-        createWindow(status.valid ? "/" : "/activation");
+        createWindow(resolveInitialRoute(status));
       });
     }
   });

@@ -260,3 +260,9 @@ contextBridge.exposeInMainWorld("license", {
   activate: (licenseKey) => ipcRenderer.invoke("license:activate", licenseKey),
   status: () => ipcRenderer.invoke("license:status"),
 });
+
+contextBridge.exposeInMainWorld("db", {
+  hasConfig: () => ipcRenderer.invoke("db:hasConfig"),
+  testConnection: (config) => ipcRenderer.invoke("db:testConnection", config),
+  saveConfig: (config) => ipcRenderer.invoke("db:saveConfig", config),
+});

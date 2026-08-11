@@ -1,13 +1,9 @@
 // packages/db-setup/steps/setupSchema.js
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { Client } from "pg";
 
 import { loadAdminConfig } from "../configStore.js";
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const SCHEMA_DIR = path.join(__dirname, "..", "schema");
 
 /**
  * Idempotently applies any schema/*.sql files not yet recorded in
@@ -16,8 +12,15 @@ const SCHEMA_DIR = path.join(__dirname, "..", "schema");
  * by db-setup itself, never by the day-to-day app).
  *
  * Safe to call multiple times — already-applied files are skipped.
+ *
+ * schemaDir: the folder containing the numbered .sql files. Passed in
+ * explicitly rather than computed from this file's own location, since
+ * that location becomes meaningless once bundled/packaged (a packaged
+ * .exe's code lives in one place, but the actual .sql files need to
+ * ship as real sibling files next to it — same reasoning as how the
+ * bundled Postgres binaries are resolved).
  */
-export async function setupSchema(paths) {
+export async function setupSchema(paths, schemaDir) {
   const adminConfig = loadAdminConfig(paths);
   if (!adminConfig) {
     throw new Error(
@@ -43,7 +46,7 @@ export async function setupSchema(paths) {
   try {
     const alreadyApplied = await getAlreadyAppliedFilenames(client);
     const allFiles = fs
-      .readdirSync(SCHEMA_DIR)
+      .readdirSync(schemaDir)
       .filter((name) => name.endsWith(".sql"))
       .sort(); // filenames are numerically prefixed (001_, 002_...), sort = correct order
 
@@ -54,7 +57,7 @@ export async function setupSchema(paths) {
     }
 
     for (const filename of pending) {
-      await applyMigrationFile(client, filename);
+      await applyMigrationFile(client, schemaDir, filename);
     }
 
     // Table/sequence ownership defaults to the superuser (since it ran
@@ -86,9 +89,9 @@ async function getAlreadyAppliedFilenames(client) {
   }
 }
 
-async function applyMigrationFile(client, filename) {
+async function applyMigrationFile(client, schemaDir, filename) {
   console.log(`[db-setup] Applying ${filename}...`);
-  const sql = fs.readFileSync(path.join(SCHEMA_DIR, filename), "utf-8");
+  const sql = fs.readFileSync(path.join(schemaDir, filename), "utf-8");
 
   await client.query("BEGIN");
   try {

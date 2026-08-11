@@ -4,10 +4,12 @@ import path from "node:path";
 import fs from "node:fs";
 import os from "node:os";
 import { fileURLToPath } from "node:url";
-import { setupDatabaseHost } from "@noonpos/db-setup";
+import {
+  setupDatabaseHost,
+  getHostStatus,
+  getPlatformPaths,
+} from "@noonpos/db-setup";
 import { t } from "./translations.js";
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 /**
  * Returns the machine's actual LAN IPv4 address(es) — the address(es)
@@ -36,6 +38,16 @@ function getLocalNetworkIps() {
 }
 
 function resolveDbSetupResourcesPath() {
+  // When packaged with pkg, there's no npm workspace to resolve — the
+  // bundled Postgres binaries ship as a sibling "bin" folder next to the
+  // .exe itself (pkg can't execute binaries from inside its virtual
+  // filesystem, so they must be real files on disk alongside it).
+  if (typeof process.pkg !== "undefined") {
+    return path.dirname(process.execPath);
+  }
+
+  // Dev mode: find where @noonpos/db-setup actually lives on disk via
+  // its package.json, then use that package's own directory.
   const dbSetupPkgPath = new URL(
     import.meta.resolve("@noonpos/db-setup/package.json")
   );
@@ -53,10 +65,10 @@ async function chooseLanguage(rl) {
   return "en";
 }
 
-async function confirm(rl, lang) {
+async function confirm(rl, lang, promptKey = "confirmPrompt") {
   const answer = await ask(
     rl,
-    `${t(lang, "confirmPrompt")} ${t(lang, "yesNoHint")} `
+    `${t(lang, promptKey)} ${t(lang, "yesNoHint")} `
   );
   return answer.toLowerCase() === "y";
 }
@@ -100,31 +112,92 @@ ${t(lang, "connectionFileNote")}
   return outputPath;
 }
 
+function printBrandHeader() {
+  console.log("=================================");
+  console.log(" NoonPos — by SmartInb");
+  console.log("=================================");
+}
+
+async function printStatusReport(lang) {
+  const paths = await getPlatformPaths();
+  const status = await getHostStatus(paths);
+
+  if (!status.configured) {
+    return status; // caller checks status.configured to decide next step
+  }
+
+  console.log("");
+  printBrandHeader();
+  console.log(` ${t(lang, "statusTitle")}`);
+  console.log("---------------------------------");
+  console.log(
+    `${t(lang, "statusService")} ${status.serviceRunning ? "✓" : "✗"}`
+  );
+  console.log(
+    `${t(lang, "statusConnection")} ${status.connectionOk ? "✓" : "✗"}`
+  );
+  console.log(`${t(lang, "statusDatabase")} ${status.database}`);
+  console.log(`${t(lang, "statusHost")} ${status.host}`);
+  console.log(`${t(lang, "statusPort")} ${status.port}`);
+
+  if (!status.connectionOk && status.connectionError) {
+    console.log("");
+    console.log(`${t(lang, "statusError")} ${status.connectionError}`);
+  }
+
+  console.log("");
+  console.log(
+    status.serviceRunning && status.connectionOk
+      ? t(lang, "statusAllGood")
+      : t(lang, "statusProblem")
+  );
+
+  return status;
+}
+
+async function pressEnterToExit(rl, lang) {
+  console.log("");
+  await ask(rl, t(lang, "pressEnterToExit"));
+}
+
 async function main() {
   const rl = readline.createInterface({
     input: process.stdin,
     output: process.stdout,
   });
+  let lang = "en";
 
   try {
-    const lang = await chooseLanguage(rl);
+    lang = await chooseLanguage(rl);
 
-    console.log("");
-    console.log("=================================");
-    console.log(` ${t(lang, "title")}`);
-    console.log("=================================");
-    console.log("");
-    console.log(t(lang, "introLine1"));
-    console.log(`  - ${t(lang, "introBullet1")}`);
-    console.log(`  - ${t(lang, "introBullet2")}`);
-    console.log(`  - ${t(lang, "introBullet3")}`);
-    console.log(`  - ${t(lang, "introBullet4")}`);
-    console.log("");
+    const status = await printStatusReport(lang);
 
-    const proceed = await confirm(rl, lang);
-    if (!proceed) {
-      console.log(t(lang, "cancelled"));
-      return;
+    if (status.configured) {
+      console.log("");
+      const rerun = await confirm(rl, lang, "rerunPrompt");
+      if (!rerun) {
+        await pressEnterToExit(rl, lang);
+        return;
+      }
+    } else {
+      console.log("");
+      printBrandHeader();
+      console.log(` ${t(lang, "title")}`);
+      console.log("=================================");
+      console.log("");
+      console.log(t(lang, "introLine1"));
+      console.log(`  - ${t(lang, "introBullet1")}`);
+      console.log(`  - ${t(lang, "introBullet2")}`);
+      console.log(`  - ${t(lang, "introBullet3")}`);
+      console.log(`  - ${t(lang, "introBullet4")}`);
+      console.log("");
+
+      const proceed = await confirm(rl, lang);
+      if (!proceed) {
+        console.log(t(lang, "cancelled"));
+        await pressEnterToExit(rl, lang);
+        return;
+      }
     }
 
     console.log("");
@@ -141,6 +214,8 @@ async function main() {
     console.log("");
     console.log(`${t(lang, "connectionSaved")} ${outputPath}`);
     console.log(t(lang, "connectionSavedNote"));
+
+    await pressEnterToExit(rl, lang);
   } catch (err) {
     console.log("");
     console.error("=================================");
@@ -148,6 +223,7 @@ async function main() {
     console.error("=================================");
     console.error(err.message || err);
     process.exitCode = 1;
+    await pressEnterToExit(rl, lang);
   } finally {
     rl.close();
   }

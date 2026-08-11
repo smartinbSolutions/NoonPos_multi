@@ -98,6 +98,7 @@ import SalesReport from "./components/Reports/components/SalesReport";
 import PrintProfitLossReport from "./components/Reports/components/PrintProfitLossReport";
 import PrintSalesByProduct from "./components/Reports/components/PrintSalesByProduct";
 import PrintSalesByCustomer from "./components/Reports/components/PrintSalesByCustomer";
+import DbSetupPage from "./components/SetupPage/components/DbSetupPage";
 
 /* ================= ROUTE GUARDS ================= */
 
@@ -130,6 +131,7 @@ export default function App() {
   const { t } = useTranslation();
   const [licenseStatus, setLicenseStatus] = useState(null);
   const [isSetup, setIsSetup] = useState(null);
+  const [dbStatus, setDbStatus] = useState(null);
 
   useEffect(() => {
     const checkLicense = async () => {
@@ -148,6 +150,22 @@ export default function App() {
   useEffect(() => {
     if (!licenseStatus?.valid) return;
 
+    const checkDb = async () => {
+      try {
+        const hasConfig = await window.db?.hasConfig();
+        setDbStatus({ hasConfig: !!hasConfig });
+      } catch (err) {
+        console.error(err);
+        setDbStatus({ hasConfig: false });
+      }
+    };
+
+    checkDb();
+  }, [licenseStatus]);
+
+  useEffect(() => {
+    if (!licenseStatus?.valid || !dbStatus?.hasConfig) return;
+
     const check = async () => {
       try {
         const res = await window.api.getCompanySetting();
@@ -159,7 +177,7 @@ export default function App() {
     };
 
     check();
-  }, [licenseStatus]);
+  }, [licenseStatus, dbStatus]);
 
   if (licenseStatus === null) return <div>{t("common.loading")}</div>;
 
@@ -172,8 +190,13 @@ export default function App() {
     );
   }
 
-  if (isSetup === null) return <div>{t("common.loading")}</div>;
+  if (dbStatus === null) return <div>{t("common.loading")}</div>;
 
+  if (!dbStatus.hasConfig) {
+    return <DbSetupPage onConnected={() => setDbStatus({ hasConfig: true })} />;
+  }
+
+  if (isSetup === null) return <div>{t("common.loading")}</div>;
   return (
     <HashRouter>
       <Routes>

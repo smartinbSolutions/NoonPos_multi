@@ -8,13 +8,12 @@ import path from "node:path";
 
 export function getPaths() {
   return {
-    dataDir: "C:\\ProgramData\\NoonPosData\\pgdata",
-    binDir: "C:\\Program Files\\NoonPosData\\pgbin\\bin",
-    installDir: "C:\\Program Files\\NoonPosData\\pgbin",
-    configDir: "C:\\ProgramData\\NoonPosData\\config",
+    dataDir: "C:\\ProgramData\\NoonPos\\pgdata",
+    binDir: "C:\\Program Files\\NoonPos\\pgbin\\bin",
+    installDir: "C:\\Program Files\\NoonPos\\pgbin",
+    configDir: "C:\\ProgramData\\NoonPos\\config",
   };
 }
-
 /**
  * Returns the SOURCE directory containing the bundled Postgres binaries
  * inside the app/installer itself. Windows only ships one architecture

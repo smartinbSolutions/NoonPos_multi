@@ -1241,6 +1241,31 @@
     "brandHint": "Secured and verified per device",
     "enterKey": "Enter your license key"
   },
+  "dbSetup": {
+    "brandTitle": "Connect to Your Database",
+    "brandSubtitle": "Enter the connection details for the database host on your network.",
+    "brandHint": "Find these details in noonpos-connection.txt",
+    "enterDetails": "Enter your database connection details",
+    "hostPlaceholder": "Host / IP address",
+    "portPlaceholder": "Port",
+    "databasePlaceholder": "Database name",
+    "userPlaceholder": "Username",
+    "passwordPlaceholder": "Password",
+    "desktopOnly": "Database setup is only available in the desktop app.",
+    "testConnection": "Test connection",
+    "testing": "Testing connection...",
+    "testSuccess": "Connection successful",
+    "connectAndContinue": "Connect and continue",
+    "saving": "Saving...",
+    "errors": {
+      "connectionRefused": "Connection refused — check the host address and make sure the database is running.",
+      "hostUnreachable": "Couldn't reach that host — check the IP address and that both devices are on the same network.",
+      "timeout": "Connection timed out — check the host address and your network connection.",
+      "authFailed": "Incorrect username or password.",
+      "databaseNotFound": "That database name wasn't found on the host.",
+      "connectionFailed": "Couldn't connect. Check the connection details and try again."
+    }
+  },
   "deleteModal": {
     "title": "Delete Item",
     "message": "Are you sure you want to delete this item?",

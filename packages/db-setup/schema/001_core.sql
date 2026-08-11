@@ -1,8 +1,8 @@
--- packages/db-setup/schema/001_core.sql
+-- packages/db-setup/migrations/001_core.sql
 -- Module 1: Core / foundation tables (users, settings, lookup tables)
 -- These tables have no foreign-key dependency on any other module.
 
--- Tracking table used by setupSchema.js to know which migration files
+-- Tracking table used by runMigrations.js to know which migration files
 -- have already been applied. Always created first.
 CREATE TABLE IF NOT EXISTS schema_migrations (
   filename TEXT PRIMARY KEY,
@@ -63,7 +63,7 @@ CREATE TABLE IF NOT EXISTS taxes (
 );
 
 CREATE TABLE IF NOT EXISTS company_settings (
-  id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  id INTEGER PRIMARY KEY CHECK (id = 1),
   company_name TEXT NOT NULL,
   company_latin_name TEXT,
   country TEXT NOT NULL,

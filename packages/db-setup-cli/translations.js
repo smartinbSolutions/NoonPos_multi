@@ -44,6 +44,17 @@ export const TRANSLATIONS = {
       "machine in your router's settings — ask your network administrator\n" +
       "or technician if you're not sure how.",
     yesNoHint: "(y/n):",
+    statusTitle: "Database Status",
+    statusService: "Service:     ",
+    statusConnection: "Connection:  ",
+    statusDatabase: "Database:    ",
+    statusHost: "Host:        ",
+    statusPort: "Port:        ",
+    statusError: "Error:",
+    statusAllGood: "Everything looks good.",
+    statusProblem: "Something needs attention — see above.",
+    rerunPrompt: "Run setup/repair again anyway?",
+    pressEnterToExit: "Press Enter to close this window...",
   },
 
   ar: {
@@ -86,6 +97,17 @@ export const TRANSLATIONS = {
       "عنوان IP ثابت أو حجز DHCP لهذا الجهاز من إعدادات الراوتر — استشر\n" +
       "مسؤول الشبكة أو التقني إذا لم تكن متأكداً من كيفية القيام بذلك.",
     yesNoHint: "(y/n):",
+    statusTitle: "حالة قاعدة البيانات",
+    statusService: "الخدمة:",
+    statusConnection: "الاتصال:",
+    statusDatabase: "قاعدة البيانات:",
+    statusHost: "المضيف:",
+    statusPort: "المنفذ:",
+    statusError: "خطأ:",
+    statusAllGood: "كل شيء يعمل بشكل جيد.",
+    statusProblem: "هناك مشكلة تحتاج إلى مراجعة — انظر أعلاه.",
+    rerunPrompt: "هل تريد تشغيل الإعداد/الإصلاح مرة أخرى؟",
+    pressEnterToExit: "اضغط Enter لإغلاق هذه النافذة...",
   },
 
   tr: {
@@ -130,6 +152,17 @@ export const TRANSLATIONS = {
       "veya DHCP rezervasyonu atayın — nasıl yapılacağından emin değilseniz\n" +
       "ağ yöneticinize veya teknisyeninize danışın.",
     yesNoHint: "(y/n):",
+    statusTitle: "Veritabanı Durumu",
+    statusService: "Servis:      ",
+    statusConnection: "Bağlantı:    ",
+    statusDatabase: "Veritabanı:  ",
+    statusHost: "Sunucu:      ",
+    statusPort: "Port:        ",
+    statusError: "Hata:",
+    statusAllGood: "Her şey normal görünüyor.",
+    statusProblem: "Dikkat gereken bir durum var — yukarıya bakın.",
+    rerunPrompt: "Kurulum/onarımı yine de yeniden çalıştır?",
+    pressEnterToExit: "Bu pencereyi kapatmak için Enter'a basın...",
   },
 };
 

@@ -1224,6 +1224,31 @@
       "enterKey": "Lisans anahtarınızı girin"
     }
   },
+  "dbSetup": {
+    "brandTitle": "Veritabanına Bağlan",
+    "brandSubtitle": "Ağınızdaki veritabanı sunucusunun bağlantı bilgilerini girin.",
+    "brandHint": "Bu bilgileri noonpos-connection.txt dosyasında bulabilirsiniz",
+    "enterDetails": "Veritabanı bağlantı bilgilerinizi girin",
+    "hostPlaceholder": "Sunucu / IP adresi",
+    "portPlaceholder": "Port",
+    "databasePlaceholder": "Veritabanı adı",
+    "userPlaceholder": "Kullanıcı adı",
+    "passwordPlaceholder": "Şifre",
+    "desktopOnly": "Veritabanı kurulumu yalnızca masaüstü uygulamasında kullanılabilir.",
+    "testConnection": "Bağlantıyı test et",
+    "testing": "Bağlantı test ediliyor...",
+    "testSuccess": "Bağlantı başarılı",
+    "connectAndContinue": "Bağlan ve devam et",
+    "saving": "Kaydediliyor...",
+    "errors": {
+      "connectionRefused": "Bağlantı reddedildi — sunucu adresini kontrol edin ve veritabanının çalıştığından emin olun.",
+      "hostUnreachable": "Bu sunucuya erişilemedi — IP adresini ve her iki cihazın da aynı ağda olduğunu kontrol edin.",
+      "timeout": "Bağlantı zaman aşımına uğradı — sunucu adresini ve ağ bağlantınızı kontrol edin.",
+      "authFailed": "Kullanıcı adı veya şifre yanlış.",
+      "databaseNotFound": "Bu veritabanı adı sunucuda bulunamadı.",
+      "connectionFailed": "Bağlanılamadı. Bağlantı bilgilerini kontrol edip tekrar deneyin."
+    }
+  },
   "deleteModal": {
     "title": "Öğeyi Sil",
     "message": "Bu öğeyi silmek istediğinizden emin misiniz?",
