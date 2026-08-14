@@ -21,8 +21,6 @@ export default function registerCustomerDisplayIPC() {
     return isCustomerDisplayOpen();
   });
 
-  // the POS window pushes cart state through this - no response needed,
-  // so `on` rather than `handle`
   ipcMain.on("customer-display:push-cart", (event, cartPayload) => {
     pushCartToCustomerDisplay(cartPayload);
   });

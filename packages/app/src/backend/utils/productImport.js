@@ -1,23 +1,20 @@
+// packages/app/src/backend/utils/productImport.js
 import ExcelJS from "exceljs";
 import createProductMovement from "./createPorductMovment";
 
-export async function generateProductImportTemplate(db) {
-  const units = db
-    .prepare(`SELECT code FROM unit WHERE code IS NOT NULL`)
-    .all()
-    .map((u) => u.code);
+export async function generateProductImportTemplate(query) {
+  const { rows: unitRows } = await query(
+    "SELECT code FROM unit WHERE code IS NOT NULL",
+  );
+  const units = unitRows.map((u) => u.code);
 
-  const taxRows = db
-    .prepare(
-      `SELECT name, rate FROM taxes
-       WHERE category IN ('product', 'both') AND name IS NOT NULL
-       ORDER BY name`
-    )
-    .all();
+  const { rows: taxRows } = await query(
+    `SELECT name, rate FROM taxes
+     WHERE category IN ('product', 'both') AND name IS NOT NULL
+     ORDER BY name`,
+  );
   const taxLabels = taxRows.map((t) => `${t.name} (${t.rate}%)`);
 
-  // Raw type codes, not translated labels — same convention unit_code
-  // already uses (the code itself in the dropdown, not a display name).
   const typeCodes = ["normal", "service"];
 
   const workbook = new ExcelJS.Workbook();
@@ -77,10 +74,6 @@ export async function generateProductImportTemplate(db) {
   ];
   sheet.getRow(1).font = { bold: true };
 
-  // One optional additional-selling-unit slot is pre-built here
-  // (unit2_*). More can be added by copying that same 4-column group
-  // rightward as unit3_*, unit4_*, etc. — the importer discovers any
-  // "unitN_name" header dynamically rather than expecting a fixed count.
   sheet.getCell("K1").note = {
     texts: [
       {
@@ -125,7 +118,7 @@ export async function generateProductImportTemplate(db) {
   return workbook.xlsx.writeBuffer();
 }
 
-export async function parseProductImport(db, filePath, fileName) {
+export async function parseProductImport(getClient, filePath, fileName) {
   const workbook = new ExcelJS.Workbook();
   await workbook.xlsx.readFile(filePath);
   const sheet = workbook.worksheets[0];
@@ -144,137 +137,105 @@ export async function parseProductImport(db, filePath, fileName) {
     ":" +
     String(now.getSeconds()).padStart(2, "0");
 
-  const unitRows = db.prepare(`SELECT id, code, name FROM unit`).all();
-  const unitByCode = new Map(unitRows.map((u) => [u.code, u]));
+  const client = await getClient();
+  const q = client.query.bind(client);
 
-  const taxByName = new Map(
-    db
-      .prepare(
-        `SELECT id, name FROM taxes WHERE category IN ('product', 'both')`
-      )
-      .all()
-      .map((t) => [t.name, t.id])
-  );
+  try {
+    await client.query("BEGIN");
 
-  const existingBarcodes = new Set(
-    db
-      .prepare(`SELECT barcode FROM product_barcodes`)
-      .all()
-      .map((b) => b.barcode)
-  );
+    const { rows: unitRows } = await q("SELECT id, code, name FROM unit");
+    const unitByCode = new Map(unitRows.map((u) => [u.code, u]));
 
-  const existingUnitBarcodes = new Set(
-    db
-      .prepare(`SELECT barcode FROM product_units WHERE barcode IS NOT NULL`)
-      .all()
-      .map((u) => u.barcode)
-  );
+    const { rows: taxRows } = await q(
+      "SELECT id, name FROM taxes WHERE category IN ('product', 'both')",
+    );
+    const taxByName = new Map(taxRows.map((t) => [t.name, t.id]));
 
-  const insertProduct = db.prepare(`
-        INSERT INTO products (name, latinName, code, costPrice, quantity, unit_id, tax_id, type)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-      `);
-  const insertBaseProductUnit = db.prepare(`
-        INSERT INTO product_units (product_id, unit_name, conversion_factor, is_base, sale_price)
-        VALUES (?, ?, 1, 1, ?)
-      `);
-  const insertAdditionalProductUnit = db.prepare(`
-        INSERT INTO product_units (product_id, unit_name, conversion_factor, is_base, sale_price, barcode)
-        VALUES (?, ?, ?, 0, ?, ?)
-      `);
-  const insertBarcode = db.prepare(`
-        INSERT INTO product_barcodes (product_id, barcode) VALUES (?, ?)
-      `);
-  const getProductByName = db.prepare(`SELECT id FROM products WHERE name = ?`);
+    const { rows: barcodeRows } = await q(
+      "SELECT barcode FROM product_barcodes",
+    );
+    const existingBarcodes = new Set(barcodeRows.map((b) => b.barcode));
 
-  const existingCodes = new Set(
-    db
-      .prepare(`SELECT code FROM products WHERE code IS NOT NULL`)
-      .all()
-      .map((p) => p.code)
-  );
+    const { rows: unitBarcodeRows } = await q(
+      "SELECT barcode FROM product_units WHERE barcode IS NOT NULL",
+    );
+    const existingUnitBarcodes = new Set(unitBarcodeRows.map((u) => u.barcode));
 
-  const insertImport = db.prepare(`
-    INSERT INTO product_imports (file_name, total_rows, created_count, skipped_products_count, skipped_barcodes_count, report_path, createdAt)
-    VALUES (?, 0, 0, 0, 0, NULL, ?)
-  `);
-  const insertImportItem = db.prepare(`
-        INSERT INTO product_import_items (import_id, row_number, status, product_id, product_name, barcode, reason)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-      `);
-  const updateImportCounts = db.prepare(`
-        UPDATE product_imports
-        SET total_rows = ?, created_count = ?, skipped_products_count = ?, skipped_barcodes_count = ?, skipped_units_count = ?
-        WHERE id = ?
-      `);
+    const { rows: codeRows } = await q(
+      "SELECT code FROM products WHERE code IS NOT NULL",
+    );
+    const existingCodes = new Set(codeRows.map((p) => p.code));
 
-  const created = [];
-  const skippedProducts = [];
-  const skippedBarcodes = [];
-  const skippedUnits = [];
-  let totalRows = 0;
+    const created = [];
+    const skippedProducts = [];
+    const skippedBarcodes = [];
+    const skippedUnits = [];
+    let totalRows = 0;
 
-  const stripTaxLabel = (raw) =>
-    String(raw || "")
-      .replace(/\s*\([^)]*\)\s*$/, "")
-      .trim();
+    const stripTaxLabel = (raw) =>
+      String(raw || "")
+        .replace(/\s*\([^)]*\)\s*$/, "")
+        .trim();
 
-  const parseNumberCell = (raw) => {
-    if (raw === null || raw === undefined || raw === "") {
-      return { value: 0, valid: true };
-    }
+    const parseNumberCell = (raw) => {
+      if (raw === null || raw === undefined || raw === "") {
+        return { value: 0, valid: true };
+      }
+      if (raw instanceof Date) {
+        return { value: null, valid: false };
+      }
+      const normalized =
+        typeof raw === "string" ? raw.trim().replace(",", ".") : raw;
+      const n = Number(normalized);
+      if (!Number.isFinite(n)) {
+        return { value: null, valid: false };
+      }
+      return { value: n, valid: true };
+    };
 
-    if (raw instanceof Date) {
-      return { value: null, valid: false };
-    }
+    const headerRow = sheet.getRow(1);
+    const headerMap = {};
+    headerRow.eachCell((cell, colNumber) => {
+      const header = String(cell.value || "").trim();
+      if (header) headerMap[header] = colNumber;
+    });
 
-    const normalized =
-      typeof raw === "string" ? raw.trim().replace(",", ".") : raw;
+    const cellByHeader = (row, header) => {
+      const col = headerMap[header];
+      return col ? row.getCell(col).value : null;
+    };
 
-    const n = Number(normalized);
+    const unitGroupPattern = /^unit(\d+)_name$/;
+    const additionalUnitGroups = Object.keys(headerMap)
+      .map((header) => header.match(unitGroupPattern))
+      .filter(Boolean)
+      .map((match) => Number(match[1]))
+      .sort((a, b) => a - b)
+      .map((n) => ({
+        n,
+        nameHeader: `unit${n}_name`,
+        factorHeader: `unit${n}_conversion_factor`,
+        priceHeader: `unit${n}_price`,
+        barcodeHeader: `unit${n}_barcode`,
+      }));
 
-    if (!Number.isFinite(n)) {
-      return { value: null, valid: false };
-    }
+    const importResult = await q(
+      `INSERT INTO product_imports (file_name, total_rows, created_count, skipped_products_count, skipped_barcodes_count, report_path, created_at)
+       VALUES ($1, 0, 0, 0, 0, NULL, $2)
+       RETURNING id`,
+      [fileName, importCreatedAt],
+    );
+    const importId = importResult.rows[0].id;
 
-    return { value: n, valid: true };
-  };
-
-  const headerRow = sheet.getRow(1);
-  const headerMap = {};
-  headerRow.eachCell((cell, colNumber) => {
-    const header = String(cell.value || "").trim();
-    if (header) headerMap[header] = colNumber;
-  });
-
-  const cellByHeader = (row, header) => {
-    const col = headerMap[header];
-    return col ? row.getCell(col).value : null;
-  };
-
-  const unitGroupPattern = /^unit(\d+)_name$/;
-  const additionalUnitGroups = Object.keys(headerMap)
-    .map((header) => header.match(unitGroupPattern))
-    .filter(Boolean)
-    .map((match) => Number(match[1]))
-    .sort((a, b) => a - b)
-    .map((n) => ({
-      n,
-      nameHeader: `unit${n}_name`,
-      factorHeader: `unit${n}_conversion_factor`,
-      priceHeader: `unit${n}_price`,
-      barcodeHeader: `unit${n}_barcode`,
-    }));
-
-  const transaction = db.transaction(() => {
-    const importResult = insertImport.run(fileName, importCreatedAt);
-    const importId = importResult.lastInsertRowid;
-
+    const rowsToProcess = [];
     sheet.eachRow((row, rowNumber) => {
       if (rowNumber === 1) return;
+      rowsToProcess.push({ row, rowNumber });
+    });
 
+    for (const { row, rowNumber } of rowsToProcess) {
       const name = String(cellByHeader(row, "name") || "").trim();
-      if (!name) return;
+      if (!name) continue;
 
       totalRows++;
 
@@ -293,16 +254,12 @@ export async function parseProductImport(db, filePath, fileName) {
         if (rawType !== "normal" && rawType !== "service") {
           const reason = "invalidType";
           skippedProducts.push({ row: rowNumber, name, reason });
-          insertImportItem.run(
-            importId,
-            rowNumber,
-            "skipped_product",
-            null,
-            name,
-            null,
-            reason
+          await q(
+            `INSERT INTO product_import_items (import_id, row_number, status, product_id, product_name, barcode, reason)
+             VALUES ($1,$2,'skipped_product',NULL,$3,NULL,$4)`,
+            [importId, rowNumber, name, reason],
           );
-          return;
+          continue;
         }
         type = rawType;
       }
@@ -320,90 +277,84 @@ export async function parseProductImport(db, filePath, fileName) {
             ? "invalidSalePrice"
             : "invalidQuantity";
         skippedProducts.push({ row: rowNumber, name, reason });
-        insertImportItem.run(
-          importId,
-          rowNumber,
-          "skipped_product",
-          null,
-          name,
-          null,
-          reason
+        await q(
+          `INSERT INTO product_import_items (import_id, row_number, status, product_id, product_name, barcode, reason)
+           VALUES ($1,$2,'skipped_product',NULL,$3,NULL,$4)`,
+          [importId, rowNumber, name, reason],
         );
-        return;
+        continue;
       }
 
       const costPrice = costPriceCell.value;
       const price = priceCell.value;
       const quantity = isService ? 0 : quantityCell.value;
 
-      if (getProductByName.get(name)) {
+      const { rows: nameMatch } = await q(
+        "SELECT id FROM products WHERE name = $1",
+        [name],
+      );
+      if (nameMatch[0]) {
         const reason = "productNameExists";
         skippedProducts.push({ row: rowNumber, name, reason });
-        insertImportItem.run(
-          importId,
-          rowNumber,
-          "skipped_product",
-          null,
-          name,
-          null,
-          reason
+        await q(
+          `INSERT INTO product_import_items (import_id, row_number, status, product_id, product_name, barcode, reason)
+           VALUES ($1,$2,'skipped_product',NULL,$3,NULL,$4)`,
+          [importId, rowNumber, name, reason],
         );
-        return;
+        continue;
       }
 
       if (code && existingCodes.has(code)) {
         const reason = "productCodeExists";
         skippedProducts.push({ row: rowNumber, name, reason });
-        insertImportItem.run(
-          importId,
-          rowNumber,
-          "skipped_product",
-          null,
-          name,
-          null,
-          reason
+        await q(
+          `INSERT INTO product_import_items (import_id, row_number, status, product_id, product_name, barcode, reason)
+           VALUES ($1,$2,'skipped_product',NULL,$3,NULL,$4)`,
+          [importId, rowNumber, name, reason],
         );
-        return;
+        continue;
       }
 
       const matchedUnit = unitByCode.get(unitCode) || null;
       if (!matchedUnit) {
         const reason = unitCode ? "unitCodeNotFound" : "unitCodeRequired";
         skippedProducts.push({ row: rowNumber, name, reason });
-        insertImportItem.run(
-          importId,
-          rowNumber,
-          "skipped_product",
-          null,
-          name,
-          null,
-          reason
+        await q(
+          `INSERT INTO product_import_items (import_id, row_number, status, product_id, product_name, barcode, reason)
+           VALUES ($1,$2,'skipped_product',NULL,$3,NULL,$4)`,
+          [importId, rowNumber, name, reason],
         );
-        return;
+        continue;
       }
 
       const unitId = matchedUnit.id;
       const baseUnitName = matchedUnit.name || "Unit";
-
       const taxId = taxName ? taxByName.get(taxName) || null : null;
 
-      const result = insertProduct.run(
-        name,
-        latinName,
-        code || null,
-        costPrice,
-        quantity,
-        unitId,
-        taxId,
-        type
+      const productResult = await q(
+        `INSERT INTO products (name, latin_name, code, cost_price, quantity, unit_id, tax_id, type)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+         RETURNING id`,
+        [
+          name,
+          latinName,
+          code || null,
+          costPrice,
+          quantity,
+          unitId,
+          taxId,
+          type,
+        ],
       );
-      const productId = result.lastInsertRowid;
+      const productId = productResult.rows[0].id;
 
-      if (code) {
-        existingCodes.add(code);
-      }
+      if (code) existingCodes.add(code);
 
-      insertBaseProductUnit.run(productId, baseUnitName, price);
+      await q(
+        `INSERT INTO product_units (product_id, unit_name, conversion_factor, is_base, sale_price)
+         VALUES ($1,$2,1,true,$3)`,
+        [productId, baseUnitName, price],
+      );
 
       const seenUnitNames = new Set([baseUnitName.toLowerCase()]);
 
@@ -415,48 +366,43 @@ export async function parseProductImport(db, filePath, fileName) {
         if (existingBarcodes.has(barcode)) {
           const reason = "barcodeAlreadyUsed";
           skippedBarcodes.push({ row: rowNumber, barcode, reason });
-          insertImportItem.run(
-            importId,
-            rowNumber,
-            "skipped_barcode",
-            productId,
-            name,
-            barcode,
-            reason
+          await q(
+            `INSERT INTO product_import_items (import_id, row_number, status, product_id, product_name, barcode, reason)
+             VALUES ($1,$2,'skipped_barcode',$3,$4,$5,$6)`,
+            [importId, rowNumber, productId, name, barcode, reason],
           );
           continue;
         }
-        insertBarcode.run(productId, barcode);
+        await q(
+          "INSERT INTO product_barcodes (product_id, barcode) VALUES ($1, $2)",
+          [productId, barcode],
+        );
         existingBarcodes.add(barcode);
       }
 
       for (const group of additionalUnitGroups) {
         const unitName = String(
-          cellByHeader(row, group.nameHeader) || ""
+          cellByHeader(row, group.nameHeader) || "",
         ).trim();
         if (!unitName) continue;
 
         const factorCell = parseNumberCell(
-          cellByHeader(row, group.factorHeader)
+          cellByHeader(row, group.factorHeader),
         );
         const unitPriceCell = parseNumberCell(
-          cellByHeader(row, group.priceHeader)
+          cellByHeader(row, group.priceHeader),
         );
         const unitBarcode = String(
-          cellByHeader(row, group.barcodeHeader) || ""
+          cellByHeader(row, group.barcodeHeader) || "",
         ).trim();
 
         if (seenUnitNames.has(unitName.toLowerCase())) {
           const reason = "duplicateUnitName";
           skippedUnits.push({ row: rowNumber, name, reason });
-          insertImportItem.run(
-            importId,
-            rowNumber,
-            "skipped_unit",
-            productId,
-            name,
-            null,
-            reason
+          await q(
+            `INSERT INTO product_import_items (import_id, row_number, status, product_id, product_name, barcode, reason)
+             VALUES ($1,$2,'skipped_unit',$3,$4,NULL,$5)`,
+            [importId, rowNumber, productId, name, reason],
           );
           continue;
         }
@@ -464,14 +410,10 @@ export async function parseProductImport(db, filePath, fileName) {
         if (!factorCell.valid || factorCell.value <= 1) {
           const reason = "invalidConversionFactor";
           skippedUnits.push({ row: rowNumber, name, reason });
-          insertImportItem.run(
-            importId,
-            rowNumber,
-            "skipped_unit",
-            productId,
-            name,
-            null,
-            reason
+          await q(
+            `INSERT INTO product_import_items (import_id, row_number, status, product_id, product_name, barcode, reason)
+             VALUES ($1,$2,'skipped_unit',$3,$4,NULL,$5)`,
+            [importId, rowNumber, productId, name, reason],
           );
           continue;
         }
@@ -479,14 +421,10 @@ export async function parseProductImport(db, filePath, fileName) {
         if (!unitPriceCell.valid) {
           const reason = "invalidUnitPrice";
           skippedUnits.push({ row: rowNumber, name, reason });
-          insertImportItem.run(
-            importId,
-            rowNumber,
-            "skipped_unit",
-            productId,
-            name,
-            null,
-            reason
+          await q(
+            `INSERT INTO product_import_items (import_id, row_number, status, product_id, product_name, barcode, reason)
+             VALUES ($1,$2,'skipped_unit',$3,$4,NULL,$5)`,
+            [importId, rowNumber, productId, name, reason],
           );
           continue;
         }
@@ -494,34 +432,31 @@ export async function parseProductImport(db, filePath, fileName) {
         if (unitBarcode && existingUnitBarcodes.has(unitBarcode)) {
           const reason = "unitBarcodeAlreadyUsed";
           skippedUnits.push({ row: rowNumber, name, reason });
-          insertImportItem.run(
-            importId,
-            rowNumber,
-            "skipped_unit",
-            productId,
-            name,
-            unitBarcode,
-            reason
+          await q(
+            `INSERT INTO product_import_items (import_id, row_number, status, product_id, product_name, barcode, reason)
+             VALUES ($1,$2,'skipped_unit',$3,$4,$5,$6)`,
+            [importId, rowNumber, productId, name, unitBarcode, reason],
           );
           continue;
         }
 
-        insertAdditionalProductUnit.run(
-          productId,
-          unitName,
-          factorCell.value,
-          unitPriceCell.value,
-          unitBarcode || null
+        await q(
+          `INSERT INTO product_units (product_id, unit_name, conversion_factor, is_base, sale_price, barcode)
+           VALUES ($1,$2,$3,false,$4,$5)`,
+          [
+            productId,
+            unitName,
+            factorCell.value,
+            unitPriceCell.value,
+            unitBarcode || null,
+          ],
         );
 
         seenUnitNames.add(unitName.toLowerCase());
-
-        if (unitBarcode) {
-          existingUnitBarcodes.add(unitBarcode);
-        }
+        if (unitBarcode) existingUnitBarcodes.add(unitBarcode);
       }
 
-      createProductMovement(db, {
+      await createProductMovement(q, {
         product_id: productId,
         reference_id: productId,
         reference_type: "import",
@@ -535,21 +470,35 @@ export async function parseProductImport(db, filePath, fileName) {
       });
 
       created.push({ row: rowNumber, name, id: productId });
-    });
+    }
 
-    updateImportCounts.run(
-      totalRows,
-      created.length,
-      skippedProducts.length,
-      skippedBarcodes.length,
-      skippedUnits.length,
-      importId
+    await q(
+      `UPDATE product_imports
+       SET total_rows = $1, created_count = $2, skipped_products_count = $3, skipped_barcodes_count = $4, skipped_units_count = $5
+       WHERE id = $6`,
+      [
+        totalRows,
+        created.length,
+        skippedProducts.length,
+        skippedBarcodes.length,
+        skippedUnits.length,
+        importId,
+      ],
     );
 
-    return importId;
-  });
+    await client.query("COMMIT");
 
-  const importId = transaction();
-
-  return { importId, created, skippedProducts, skippedBarcodes, skippedUnits };
+    return {
+      importId,
+      created,
+      skippedProducts,
+      skippedBarcodes,
+      skippedUnits,
+    };
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
+  } finally {
+    client.release();
+  }
 }

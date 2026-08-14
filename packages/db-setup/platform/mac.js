@@ -1,13 +1,57 @@
 // packages/db-setup/platform/mac.js
+import fs from "node:fs";
+import path from "node:path";
 
 // ---- Paths -----------------------------------------------------------
 
 export function getPaths() {
   return {
     dataDir: "/Library/Application Support/NoonPos/pgdata",
+    // binDir is the DESTINATION — where the bundled Postgres binaries get
+    // copied TO on the customer's machine, not where they ship inside
+    // your app bundle. See getBundledBinSourceDir() for the source.
     binDir: "/Library/Application Support/NoonPos/pgbin/bin",
+    installDir: "/Library/Application Support/NoonPos/pgbin",
     configDir: "/Library/Application Support/NoonPos/config",
   };
+}
+
+/**
+ * Returns the SOURCE directory containing the bundled Postgres binaries
+ * inside the app/installer itself, picking the right folder for the
+ * current Mac architecture (Apple Silicon vs Intel).
+ */
+export function getBundledBinSourceDir(appResourcesPath) {
+  const archFolder = process.arch === "arm64" ? "mac-arm64" : "mac-x64";
+  return path.join(appResourcesPath, "bin", archFolder);
+}
+
+/**
+ * Idempotently copies the bundled Postgres binaries from inside the app
+ * to the install destination on the customer's machine. Safe to call
+ * multiple times — skips the copy if the destination already has the
+ * expected postgres binary in place.
+ */
+export function ensureBinariesInstalled(appResourcesPath) {
+  const { installDir, binDir } = getPaths();
+  const alreadyInstalled = fs.existsSync(path.join(binDir, "postgres"));
+
+  if (alreadyInstalled) {
+    return { copied: false, installDir };
+  }
+
+  const sourceDir = getBundledBinSourceDir(appResourcesPath);
+  if (!fs.existsSync(sourceDir)) {
+    throw new Error(
+      `[db-setup] Bundled Postgres binaries not found at "${sourceDir}". ` +
+        `Expected the installer to include this folder.`
+    );
+  }
+
+  fs.mkdirSync(installDir, { recursive: true });
+  fs.cpSync(sourceDir, installDir, { recursive: true });
+
+  return { copied: true, installDir };
 }
 
 // ---- initdb --------------------------------------------------------------
@@ -16,12 +60,25 @@ export function getPaths() {
  * Returns the exe + args needed to run initdb.
  * pwfilePath must point to a temp file containing ONLY the password
  * (caller is responsible for creating + deleting that temp file).
+ *
+ * --encoding=UTF8 --locale=C: forces UTF8 regardless of the host
+ * machine's OS locale, for the same reason as the Windows platform
+ * file — without this, initdb's encoding choice depends on the local
+ * machine's locale, which can silently break Arabic/Turkish storage.
  */
 export function getInitdbCommand(dataDir, pwfilePath) {
   const { binDir } = getPaths();
   return {
     exe: `${binDir}/initdb`,
-    args: ["-D", dataDir, "-U", "postgres", `--pwfile=${pwfilePath}`],
+    args: [
+      "-D",
+      dataDir,
+      "-U",
+      "postgres",
+      `--pwfile=${pwfilePath}`,
+      "--encoding=UTF8",
+      "--locale=C",
+    ],
   };
 }
 
@@ -45,30 +102,30 @@ export function getLaunchDaemonPlistPath() {
 export function getLaunchDaemonPlistContents(dataDir) {
   const { binDir } = getPaths();
   return `<?xml version="1.0" encoding="UTF-8"?>
-  <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-  <plist version="1.0">
-  <dict>
-    <key>Label</key>
-    <string>${LAUNCH_DAEMON_LABEL}</string>
-    <key>ProgramArguments</key>
-    <array>
-      <string>${binDir}/postgres</string>
-      <string>-D</string>
-      <string>${dataDir}</string>
-    </array>
-    <key>RunAtLoad</key>
-    <true/>
-    <key>KeepAlive</key>
-    <true/>
-    <key>UserName</key>
-    <string>_noonpos_pg</string>
-    <key>StandardOutPath</key>
-    <string>/Library/Logs/NoonPos/postgres.log</string>
-    <key>StandardErrorPath</key>
-    <string>/Library/Logs/NoonPos/postgres-error.log</string>
-  </dict>
-  </plist>
-  `;
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>${LAUNCH_DAEMON_LABEL}</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>${binDir}/postgres</string>
+    <string>-D</string>
+    <string>${dataDir}</string>
+  </array>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>UserName</key>
+  <string>_noonpos_pg</string>
+  <key>StandardOutPath</key>
+  <string>/Library/Logs/NoonPos/postgres.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Library/Logs/NoonPos/postgres-error.log</string>
+</dict>
+</plist>
+`;
 }
 
 export function getServiceRegisterCommand() {

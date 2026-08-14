@@ -1,4 +1,4 @@
-import createProductMovement from "./createPorductMovment";
+// packages/app/src/backend/utils/data.js
 
 const TRANSLATIONS = {
   units: [
@@ -13,7 +13,6 @@ const TRANSLATIONS = {
     { en: "Service", ar: "خدمة", tr: "Hizmet", code: "SRV" },
   ],
   taxes: [
-    // Product-level: applied per line item (e.g. VAT on a specific product)
     {
       en: "Standard VAT 18%",
       ar: "ضريبة القيمة المضافة القياسية 18%",
@@ -35,8 +34,6 @@ const TRANSLATIONS = {
       rate: 0,
       category: "product",
     },
-
-    // Invoice-level: applied once to the whole invoice (service/delivery style charges)
     {
       en: "Service Charge 5%",
       ar: "رسوم الخدمة 5%",
@@ -58,8 +55,6 @@ const TRANSLATIONS = {
       rate: 1,
       category: "invoice",
     },
-
-    // Both: usable at either the product line or the invoice header
     {
       en: "General VAT 10%",
       ar: "ضريبة القيمة المضافة العامة 10%",
@@ -101,155 +96,171 @@ const TRANSLATIONS = {
   },
 };
 
-// name = chosen setup language, latinName = secondary reference language
-// (mirrors the original en/ar pairing, just made direction-aware)
 function localize(entry, language) {
   const secondary = language === "en" ? "ar" : "en";
   return [entry[language], entry[secondary]];
 }
 
-export function seedData(db, { language = "ar", currencyId } = {}) {
+/**
+ * TEMPORARY: inlined equivalent of createProductMovement (products module,
+ * not yet ported). Duplicates that function's insert logic just for the
+ * two sample products seeded here. Once products/createProductMovement.js
+ * is ported, replace this with a real call to it and delete this helper.
+ */
+async function insertSeedProductMovement(query, movement) {
+  await query(
+    `
+    INSERT INTO product_movements (
+      product_id, reference_id, reference_type, type, action,
+      enter_price, out_price, quantity, base_unit_name, unit_name,
+      conversion_factor
+    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+    `,
+    [
+      movement.product_id,
+      movement.reference_id,
+      movement.reference_type,
+      movement.type,
+      movement.action,
+      movement.enter_price ?? 0,
+      movement.out_price ?? 0,
+      movement.quantity,
+      movement.base_unit_name,
+      movement.unit_name,
+      movement.conversion_factor,
+    ]
+  );
+}
+
+/**
+ * PORTED: async, Postgres. Called once ever per shop, inside the same
+ * transaction as create-company-settings — see companySettings.js.
+ * `query` here is actually the transaction client's .query, not the
+ * shared pool, so all inserts are part of the caller's transaction.
+ */
+export async function seedData(query, { language = "ar", currencyId } = {}) {
   const lang = ["ar", "en", "tr"].includes(language) ? language : "ar";
 
-  // Resolve the fund's currency: prefer the id we were just given,
-  // fall back to whichever currency is flagged primary.
-  const resolvedCurrencyId =
-    currencyId ??
-    db.prepare(`SELECT id FROM currencies WHERE isPrimary = 1 LIMIT 1`).get()
-      ?.id ??
-    1;
+  let resolvedCurrencyId = currencyId;
+  if (!resolvedCurrencyId) {
+    const { rows } = await query(
+      "SELECT id FROM currencies WHERE is_primary = true LIMIT 1"
+    );
+    resolvedCurrencyId = rows[0]?.id ?? 1;
+  }
 
-  const insertUnit = db.prepare(`
-    INSERT OR IGNORE INTO unit(name, latinName, code)
-    VALUES (?, ?, ?)
-  `);
-
-  TRANSLATIONS.units.forEach((unit) => {
+  for (const unit of TRANSLATIONS.units) {
     const [name, latinName] = localize(unit, lang);
-    insertUnit.run(name, latinName, unit.code);
-  });
+    await query(
+      `INSERT INTO unit (name, latin_name, code)
+       VALUES ($1, $2, $3)
+       ON CONFLICT DO NOTHING`,
+      [name, latinName, unit.code]
+    );
+  }
 
-  const insertTax = db.prepare(`
-    INSERT OR IGNORE INTO taxes(name, rate, category)
-    VALUES (?, ?, ?)
-  `);
-
-  TRANSLATIONS.taxes.forEach((tax) => {
+  for (const tax of TRANSLATIONS.taxes) {
     const name = tax[lang] || tax.en;
-    insertTax.run(name, tax.rate, tax.category);
-  });
+    await query(
+      `INSERT INTO taxes (name, rate, category)
+       VALUES ($1, $2, $3)
+       ON CONFLICT DO NOTHING`,
+      [name, tax.rate, tax.category]
+    );
+  }
 
-  const insertFund = db.prepare(`
-    INSERT OR IGNORE INTO funds(name, currency_id)
-    VALUES (?, ?)
-  `);
-  insertFund.run(TRANSLATIONS.fundName[lang], resolvedCurrencyId);
+  // funds/expense_category have no unique constraint to conflict on, and
+  // seedData only ever runs once per shop (gated by company_settings
+  // being empty) — a plain insert is correct here, no ON CONFLICT needed.
+  await query(`INSERT INTO funds (name, currency_id) VALUES ($1, $2)`, [
+    TRANSLATIONS.fundName[lang],
+    resolvedCurrencyId,
+  ]);
 
-  const insertExpenseCategory = db.prepare(`
-    INSERT OR IGNORE INTO expence_category(name, latinName)
-    VALUES (?, ?)
-  `);
-
-  TRANSLATIONS.expenseCategories.forEach((category) => {
+  for (const category of TRANSLATIONS.expenseCategories) {
     const [name, latinName] = localize(category, lang);
-    insertExpenseCategory.run(name, latinName);
-  });
+    await query(
+      `INSERT INTO expense_category (name, latin_name) VALUES ($1, $2)`,
+      [name, latinName]
+    );
+  }
 
-  // Sample product for testing, using the "Piece" unit seeded above
-  const pieceUnitCode = "PCS";
-  const pieceUnit = db
-    .prepare(`SELECT id, name FROM unit WHERE code = ?`)
-    .get(pieceUnitCode);
+  // ---- Sample product ----------------------------------------------------
+  const pieceUnitResult = await query(
+    "SELECT id, name FROM unit WHERE code = $1",
+    ["PCS"]
+  );
+  const pieceUnit = pieceUnitResult.rows[0];
 
-  const existingTestProduct = db
-    .prepare(`SELECT id FROM products WHERE name = ? LIMIT 1`)
-    .get(TRANSLATIONS.testProduct[lang]);
-
-  if (!existingTestProduct && pieceUnit) {
+  if (pieceUnit) {
     const [name, latinName] = localize(TRANSLATIONS.testProduct, lang);
     const costPrice = 50;
     const salePrice = 100;
     const quantity = 10;
 
-    const result = db
-      .prepare(
-        `
-        INSERT INTO products (name, latinName, costPrice, quantity, unit_id)
-        VALUES (?, ?, ?, ?, ?)
-      `
-      )
-      .run(name, latinName, costPrice, quantity, pieceUnit.id);
+    const productResult = await query(
+      `INSERT INTO products (name, latin_name, cost_price, quantity, unit_id)
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING id`,
+      [name, latinName, costPrice, quantity, pieceUnit.id]
+    );
+    const productId = productResult.rows[0].id;
 
-    const productId = result.lastInsertRowid;
+    await query(
+      `INSERT INTO product_units (product_id, unit_name, conversion_factor, is_base, sale_price)
+       VALUES ($1, $2, 1, true, $3)`,
+      [productId, pieceUnit.name || "Piece", salePrice]
+    );
 
-    db.prepare(
-      `
-        INSERT INTO product_units (product_id, unit_name, conversion_factor, is_base, sale_price)
-        VALUES (?, ?, 1, 1, ?)
-      `
-    ).run(productId, pieceUnit.name || "Piece", salePrice);
-
-    createProductMovement(db, {
+    await insertSeedProductMovement(query, {
       product_id: productId,
       reference_id: productId,
       reference_type: "initial",
       action: "create",
       type: "in",
       quantity,
-      enterPrice: costPrice,
+      enter_price: costPrice,
       base_unit_name: pieceUnit.name || "Piece",
       unit_name: pieceUnit.name || "Piece",
       conversion_factor: 1,
     });
   }
 
-  // Sample service product — same shape as the sample piece product above,
-  // just type: 'service' and the "Service" unit. quantity/costPrice stay 0
-  // since there's no real stock behind a service; createProductMovement
-  // still fires for consistency with create-product's handling (movement
-  // history exists for every product regardless of type), it's just a 0-in
-  // entry rather than a meaningful stock event.
-  const serviceUnitCode = "SRV";
-  const serviceUnit = db
-    .prepare(`SELECT id, name FROM unit WHERE code = ?`)
-    .get(serviceUnitCode);
+  // ---- Sample service product ---------------------------------------------
+  const serviceUnitResult = await query(
+    "SELECT id, name FROM unit WHERE code = $1",
+    ["SRV"]
+  );
+  const serviceUnit = serviceUnitResult.rows[0];
 
-  const existingTestServiceProduct = db
-    .prepare(`SELECT id FROM products WHERE name = ? LIMIT 1`)
-    .get(TRANSLATIONS.testServiceProduct[lang]);
-
-  if (!existingTestServiceProduct && serviceUnit) {
+  if (serviceUnit) {
     const [name, latinName] = localize(TRANSLATIONS.testServiceProduct, lang);
     const costPrice = 0;
     const salePrice = 75;
     const quantity = 0;
 
-    const result = db
-      .prepare(
-        `
-        INSERT INTO products (name, latinName, costPrice, quantity, unit_id, type)
-        VALUES (?, ?, ?, ?, ?, 'service')
-      `
-      )
-      .run(name, latinName, costPrice, quantity, serviceUnit.id);
+    const productResult = await query(
+      `INSERT INTO products (name, latin_name, cost_price, quantity, unit_id, type)
+       VALUES ($1, $2, $3, $4, $5, 'service')
+       RETURNING id`,
+      [name, latinName, costPrice, quantity, serviceUnit.id]
+    );
+    const productId = productResult.rows[0].id;
 
-    const productId = result.lastInsertRowid;
+    await query(
+      `INSERT INTO product_units (product_id, unit_name, conversion_factor, is_base, sale_price)
+       VALUES ($1, $2, 1, true, $3)`,
+      [productId, serviceUnit.name || "Service", salePrice]
+    );
 
-    db.prepare(
-      `
-        INSERT INTO product_units (product_id, unit_name, conversion_factor, is_base, sale_price)
-        VALUES (?, ?, 1, 1, ?)
-      `
-    ).run(productId, serviceUnit.name || "Service", salePrice);
-
-    createProductMovement(db, {
+    await insertSeedProductMovement(query, {
       product_id: productId,
       reference_id: productId,
       reference_type: "initial",
       action: "create",
       type: "in",
       quantity,
-      enterPrice: costPrice,
+      enter_price: costPrice,
       base_unit_name: serviceUnit.name || "Service",
       unit_name: serviceUnit.name || "Service",
       conversion_factor: 1,

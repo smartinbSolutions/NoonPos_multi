@@ -1,8 +1,10 @@
-const { ipcMain } = require("electron");
-import db from "../db";
+// packages/app/src/backend/currencies.ipc.js
+import { ipcMain } from "electron";
+import { query } from "../dbConnect.js";
+
 export default function registerCurrenciesIPC() {
   // CREATE
-  ipcMain.handle("create-currencies", (event, data) => {
+  ipcMain.handle("create-currencies", async (event, data) => {
     if (!data.name || !data.code || !data.exchangeRate) {
       return { success: false, error: "ERROR ENTER DATA" };
     }
@@ -14,14 +16,11 @@ export default function registerCurrenciesIPC() {
     }
 
     try {
-      const result = db
-        .prepare(
-          `
-        INSERT INTO currencies (name, latinName, minorName, minorLatinName, code, exchangeRate, symbol, isPrimary)
-        VALUES (?,?,?,?,?,?,?,?)
-      `
-        )
-        .run(
+      const { rows } = await query(
+        `INSERT INTO currencies (name, latin_name, minor_name, minor_latin_name, code, exchange_rate, symbol, is_primary)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,false)
+         RETURNING id`,
+        [
           data.name,
           data.latinName,
           data.minorName || null,
@@ -29,15 +28,12 @@ export default function registerCurrenciesIPC() {
           data.code,
           rate,
           data.symbol,
-          0
-        );
+        ],
+      );
 
-      return {
-        success: true,
-        id: result.lastInsertRowid,
-      };
+      return { success: true, id: rows[0].id };
     } catch (err) {
-      if (err.code === "SQLITE_CONSTRAINT_UNIQUE") {
+      if (err.code === "23505") {
         return { success: false, error: "CURRENCY_ALREADY_EXISTS" };
       }
       console.error(err);
@@ -45,14 +41,16 @@ export default function registerCurrenciesIPC() {
     }
   });
 
-  ipcMain.handle("update-currency", (event, data) => {
+  ipcMain.handle("update-currency", async (event, data) => {
     if (!data.name || !data.code || !data.exchangeRate) {
       return { success: false, error: "ERROR ENTER DATA" };
     }
 
-    const existing = db
-      .prepare(`SELECT isPrimary FROM currencies WHERE id = ?`)
-      .get(data.id);
+    const { rows: existingRows } = await query(
+      "SELECT is_primary FROM currencies WHERE id = $1",
+      [data.id],
+    );
+    const existing = existingRows[0];
 
     if (!existing) {
       return { success: false, error: "CURRENCY_NOT_FOUND" };
@@ -60,7 +58,7 @@ export default function registerCurrenciesIPC() {
 
     const rate = Number(data.exchangeRate);
 
-    if (existing.isPrimary) {
+    if (existing.is_primary) {
       if (rate !== 1) {
         return { success: false, error: "PRIMARY_RATE_MUST_BE_ONE" };
       }
@@ -69,26 +67,25 @@ export default function registerCurrenciesIPC() {
     }
 
     try {
-      db.prepare(
-        `
-        UPDATE currencies
-        SET name = ?, latinName = ?, minorName = ?, minorLatinName = ?, code = ?, exchangeRate = ?, symbol = ?
-        WHERE id = ?
-      `
-      ).run(
-        data.name,
-        data.latinName,
-        data.minorName || null,
-        data.minorLatinName || null,
-        data.code,
-        rate,
-        data.symbol,
-        data.id
+      await query(
+        `UPDATE currencies
+         SET name = $1, latin_name = $2, minor_name = $3, minor_latin_name = $4, code = $5, exchange_rate = $6, symbol = $7
+         WHERE id = $8`,
+        [
+          data.name,
+          data.latinName,
+          data.minorName || null,
+          data.minorLatinName || null,
+          data.code,
+          rate,
+          data.symbol,
+          data.id,
+        ],
       );
 
       return { success: true };
     } catch (err) {
-      if (err.code === "SQLITE_CONSTRAINT_UNIQUE") {
+      if (err.code === "23505") {
         return { success: false, error: "CURRENCY_ALREADY_EXISTS" };
       }
       console.error(err);
@@ -96,56 +93,47 @@ export default function registerCurrenciesIPC() {
     }
   });
 
-  ipcMain.handle("get-currencies", () => {
-    const currencies = db
-      .prepare(
-        `
-      SELECT * FROM currencies
-    `
-      )
-      .all();
-
-    return currencies;
+  ipcMain.handle("get-currencies", async () => {
+    const { rows } = await query("SELECT * FROM currencies");
+    return rows;
   });
 
-  ipcMain.handle("get-currency", (event, id) => {
-    const currency = db
-      .prepare(
-        `
-      SELECT * FROM currencies WHERE id = ?
-    `
-      )
-      .get(id);
-
-    return currency;
+  ipcMain.handle("get-currency", async (event, id) => {
+    const { rows } = await query("SELECT * FROM currencies WHERE id = $1", [
+      id,
+    ]);
+    return rows[0];
   });
 
-  ipcMain.handle("delete-currency", (event, id) => {
-    const currency = db
-      .prepare(`SELECT isPrimary FROM currencies WHERE id = ?`)
-      .get(id);
+  ipcMain.handle("delete-currency", async (event, id) => {
+    const { rows: currencyRows } = await query(
+      "SELECT is_primary FROM currencies WHERE id = $1",
+      [id],
+    );
+    const currency = currencyRows[0];
 
     if (!currency) {
       return { success: true };
     }
 
-    if (currency.isPrimary) {
+    if (currency.is_primary) {
       return { success: false, error: "CANNOT_DELETE_PRIMARY" };
     }
 
-    const usedByFund = db
-      .prepare(`SELECT 1 FROM funds WHERE currency_id = ? LIMIT 1`)
-      .get(id);
+    const { rows: usedByFundRows } = await query(
+      "SELECT 1 FROM funds WHERE currency_id = $1 LIMIT 1",
+      [id],
+    );
 
-    if (usedByFund) {
+    if (usedByFundRows[0]) {
       return { success: false, error: "CURRENCY_IN_USE" };
     }
 
     try {
-      db.prepare(`DELETE FROM currencies WHERE id = ?`).run(id);
+      await query("DELETE FROM currencies WHERE id = $1", [id]);
       return { success: true };
     } catch (err) {
-      if (err.code === "SQLITE_CONSTRAINT_FOREIGNKEY") {
+      if (err.code === "23503") {
         return { success: false, error: "CURRENCY_IN_USE" };
       }
       console.error(err);

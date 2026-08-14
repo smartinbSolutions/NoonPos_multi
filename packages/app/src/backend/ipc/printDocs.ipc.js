@@ -1,11 +1,4 @@
 // printDocsIpc.js
-//
-// Unified print/PDF handlers for all printable documents (sales invoices,
-// purchase invoices, and later quotations/returns). The renderer already
-// owns each document's data via its own route (e.g. /print-sales/:id), so
-// this file only needs to know how to open a hidden window, load a given
-// route, and either save it as PDF or send it to a printer. No document-
-// specific logic lives here — that stays in each route's own component.
 
 const { ipcMain, BrowserWindow, dialog } = require("electron");
 import path from "path";
@@ -122,7 +115,7 @@ export default function registerPrintDocsIPC() {
                 win.destroy();
                 win = null;
               }
-            }
+            },
           );
         }, 600);
       });

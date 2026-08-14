@@ -8,12 +8,16 @@ import path from "node:path";
 
 export function getPaths() {
   return {
-    dataDir: "C:\\ProgramData\\NoonPos\\pgdata",
-    binDir: "C:\\Program Files\\NoonPos\\pgbin\\bin",
-    installDir: "C:\\Program Files\\NoonPos\\pgbin",
-    configDir: "C:\\ProgramData\\NoonPos\\config",
+    dataDir: "C:\\ProgramData\\NoonPosData\\pgdata",
+    // binDir is the DESTINATION — where the bundled Postgres binaries get
+    // copied TO on the customer's machine, not where they ship inside
+    // your app bundle. See getBundledBinSourceDir() for the source.
+    binDir: "C:\\Program Files\\NoonPosData\\pgbin\\bin",
+    installDir: "C:\\Program Files\\NoonPosData\\pgbin",
+    configDir: "C:\\ProgramData\\NoonPosData\\config",
   };
 }
+
 /**
  * Returns the SOURCE directory containing the bundled Postgres binaries
  * inside the app/installer itself. Windows only ships one architecture
@@ -61,12 +65,30 @@ export function ensureBinariesInstalled(appResourcesPath) {
  * Returns the exe + args needed to run initdb.
  * pwfilePath must point to a temp file containing ONLY the password
  * (caller is responsible for creating + deleting that temp file).
+ *
+ * --encoding=UTF8 --locale=C: forces UTF8 regardless of the host
+ * machine's OS locale. Without this, initdb picks encoding based on
+ * the OS's default locale — on many Windows installs that's WIN1252,
+ * which cannot store Arabic/Turkish text at all, breaking this
+ * product's core requirement. --locale=C means Postgres uses simple
+ * byte-order sorting rather than locale-aware collation; the app
+ * already handles locale-aware display/sorting on the JS side, so
+ * this tradeoff is fine and keeps behavior identical across every
+ * customer machine regardless of that machine's own OS locale.
  */
 export function getInitdbCommand(dataDir, pwfilePath) {
   const { binDir } = getPaths();
   return {
     exe: `${binDir}\\initdb.exe`,
-    args: ["-D", dataDir, "-U", "postgres", `--pwfile=${pwfilePath}`],
+    args: [
+      "-D",
+      dataDir,
+      "-U",
+      "postgres",
+      `--pwfile=${pwfilePath}`,
+      "--encoding=UTF8",
+      "--locale=C",
+    ],
   };
 }
 
@@ -76,7 +98,14 @@ export function getServiceRegisterCommand(dataDir) {
   const { binDir } = getPaths();
   return {
     exe: `${binDir}\\pg_ctl.exe`,
-    args: ["register", "-N", "NoonPosPostgres", "-D", dataDir, "-w"],
+    args: [
+      "register",
+      "-N",
+      "NoonPosPostgres",
+      "-D",
+      dataDir,
+      "-w",
+    ],
   };
 }
 
@@ -127,6 +156,12 @@ export function isFirewallRuleConfiguredCommand() {
  * Restricts the config directory (containing the superuser password file)
  * so only Administrators and SYSTEM can read it — removes inherited
  * access for regular/standard users.
+ *
+ * Uses well-known SIDs (*S-1-5-32-544 = Administrators, *S-1-5-18 =
+ * SYSTEM) rather than literal account names — names like "Administrators"
+ * are English-specific display strings and can fail to resolve on
+ * non-English Windows installs, which matters given this product's
+ * Arabic/Turkish-speaking customer base. SIDs are language-independent.
  */
 export function getLockdownConfigCommand(configDir) {
   return {
@@ -135,9 +170,9 @@ export function getLockdownConfigCommand(configDir) {
       configDir,
       "/inheritance:r", // strip inherited permissions
       "/grant:r",
-      "Administrators:(OI)(CI)F",
+      "*S-1-5-32-544:(OI)(CI)F", // Administrators
       "/grant:r",
-      "SYSTEM:(OI)(CI)F",
+      "*S-1-5-18:(OI)(CI)F", // SYSTEM
     ],
   };
 }

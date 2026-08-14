@@ -221,7 +221,7 @@ async function main() {
     console.error("=================================");
     console.error(" Setup FAILED");
     console.error("=================================");
-    console.error(err.message || err);
+    console.error(err.stack || err.message || err);
     process.exitCode = 1;
     await pressEnterToExit(rl, lang);
   } finally {

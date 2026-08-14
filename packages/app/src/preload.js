@@ -265,4 +265,5 @@ contextBridge.exposeInMainWorld("db", {
   hasConfig: () => ipcRenderer.invoke("db:hasConfig"),
   testConnection: (config) => ipcRenderer.invoke("db:testConnection", config),
   saveConfig: (config) => ipcRenderer.invoke("db:saveConfig", config),
+  checkSavedConnection: () => ipcRenderer.invoke("db:checkSavedConnection"),
 });

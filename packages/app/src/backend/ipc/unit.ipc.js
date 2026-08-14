@@ -1,26 +1,24 @@
-const { ipcMain } = require("electron");
-import db from "../db";
+// packages/app/src/backend/unit.ipc.js
+import { ipcMain } from "electron";
+import { query } from "../dbConnect.js";
 
 export default function registerUnitIPC() {
-  ipcMain.handle("create-unit", (event, data) => {
+  ipcMain.handle("create-unit", async (event, data) => {
     if (!data.name || !data.code) {
       return { message: "ERROR ENTER DATA", status: 500 };
     }
 
     try {
-      const result = db
-        .prepare(
-          `
-        INSERT INTO unit 
-        (name, latinName, code)
-        VALUES (?, ?, ?)
-      `
-        )
-        .run(data.name, data.latinName, data.code);
+      const { rows } = await query(
+        `INSERT INTO unit (name, latin_name, code)
+         VALUES ($1, $2, $3)
+         RETURNING id`,
+        [data.name, data.latinName, data.code],
+      );
 
-      return { success: true, id: result.lastInsertRowid };
+      return { success: true, id: rows[0].id };
     } catch (err) {
-      if (err.code === "SQLITE_CONSTRAINT_UNIQUE") {
+      if (err.code === "23505") {
         return { success: false, error: "UNIT_ALREADY_EXISTS" };
       }
       console.error(err);
@@ -28,47 +26,32 @@ export default function registerUnitIPC() {
     }
   });
 
-  ipcMain.handle("get-units", () => {
-    const units = db
-      .prepare(
-        `
-      SELECT * FROM unit
-    `
-      )
-      .all();
-
-    return units;
+  ipcMain.handle("get-units", async () => {
+    const { rows } = await query("SELECT * FROM unit");
+    return rows;
   });
 
-  ipcMain.handle("get-unit", (event, id) => {
-    const unit = db
-      .prepare(
-        `
-      SELECT * FROM unit WHERE id = ?
-    `
-      )
-      .get(id);
-
-    return unit;
+  ipcMain.handle("get-unit", async (event, id) => {
+    const { rows } = await query("SELECT * FROM unit WHERE id = $1", [id]);
+    return rows[0];
   });
 
-  ipcMain.handle("update-unit", (event, data) => {
+  ipcMain.handle("update-unit", async (event, data) => {
     if (!data.name || !data.code) {
       return { message: "ERROR ENTER DATA", status: 500 };
     }
 
     try {
-      db.prepare(
-        `
-        UPDATE unit
-        SET name = ?, latinName = ?, code = ?
-        WHERE id = ?
-      `
-      ).run(data.name, data.latinName, data.code, data.id);
+      await query(
+        `UPDATE unit
+         SET name = $1, latin_name = $2, code = $3
+         WHERE id = $4`,
+        [data.name, data.latinName, data.code, data.id],
+      );
 
       return { success: true };
     } catch (err) {
-      if (err.code === "SQLITE_CONSTRAINT_UNIQUE") {
+      if (err.code === "23505") {
         return { success: false, error: "UNIT_ALREADY_EXISTS" };
       }
       console.error(err);
@@ -76,12 +59,12 @@ export default function registerUnitIPC() {
     }
   });
 
-  ipcMain.handle("delete-unit", (event, id) => {
+  ipcMain.handle("delete-unit", async (event, id) => {
     try {
-      db.prepare(`DELETE FROM unit WHERE id = ?`).run(id);
+      await query("DELETE FROM unit WHERE id = $1", [id]);
       return { success: true };
     } catch (err) {
-      if (err.code === "SQLITE_CONSTRAINT_FOREIGNKEY") {
+      if (err.code === "23503") {
         return { success: false, error: "UNIT_IN_USE" };
       }
       console.error(err);

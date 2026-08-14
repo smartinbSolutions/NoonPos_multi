@@ -1,7 +1,8 @@
+// packages/app/src/backend/fund.ipc.js
 import { ipcMain, dialog, BrowserWindow } from "electron";
 import ExcelJS from "exceljs";
 import fs from "fs";
-import db from "../db";
+import { query, getClient } from "../dbConnect.js";
 import createFundHistory from "../utils/createFundHistory";
 
 const EXPORT_LABELS = {
@@ -104,9 +105,16 @@ const formatExportDate = (value) => {
   const dd = String(d.getDate()).padStart(2, "0");
   return `${yyyy}-${mm}-${dd}`;
 };
-function fetchFundHistory(
-  db,
-  { fundId, page = 1, limit = 50, startDate, endDate, exportAll = false }
+
+/**
+ * PORTED: async, Postgres. h.date/fh.date are TIMESTAMPTZ columns now, so
+ * SQLite's datetime(...)/date(...) wrapping isn't needed for ordering —
+ * only for date-only comparisons (::date casts) where the original used
+ * date(?) to normalize input strings.
+ */
+async function fetchFundHistory(
+  queryFn,
+  { fundId, page = 1, limit = 50, startDate, endDate, exportAll = false },
 ) {
   const currentPage = Math.max(1, Number(page) || 1);
   const perPage = Math.max(1, Number(limit) || 50);
@@ -114,55 +122,58 @@ function fetchFundHistory(
 
   const dateConditions = [];
   const dateValues = [];
+  let paramIndex = 2;
 
   if (startDate) {
-    dateConditions.push("date(fh.date) >= date(?)");
+    dateConditions.push(`fh.date::date >= $${paramIndex}::date`);
     dateValues.push(startDate);
+    paramIndex++;
   }
   if (endDate) {
-    dateConditions.push("date(fh.date) <= date(?)");
+    dateConditions.push(`fh.date::date <= $${paramIndex}::date`);
     dateValues.push(endDate);
+    paramIndex++;
   }
   const dateFilter = dateConditions.length
     ? `AND ${dateConditions.join(" AND ")}`
     : "";
 
-  const pagingClause = exportAll ? "" : "LIMIT ? OFFSET ?";
+  const pagingClause = exportAll
+    ? ""
+    : `LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`;
   const pagingValues = exportAll ? [] : [perPage, offset];
 
-  const rows = db
-    .prepare(
-      `
-      WITH full_history AS (
-        SELECT
-          h.id,
-          h.fund_id,
-          h.record_type,
-          h.date,
-          h.movement_type,
-          h.amount,
-          h.note,
-          h.createdAt,
+  const { rows } = await queryFn(
+    `WITH full_history AS (
+      SELECT
+        h.id,
+        h.fund_id,
+        h.record_type,
+        h.date,
+        h.movement_type,
+        h.amount,
+        h.note,
+        h.created_at,
 
-          CASE
-            WHEN h.record_type = 'transfer' THEN 'fund'
-            ELSE p.party_type
-          END AS party_type,
+        CASE
+          WHEN h.record_type = 'transfer' THEN 'fund'
+          ELSE p.party_type
+        END AS party_type,
 
-          CASE
-            WHEN h.record_type = 'transfer'
-              THEN (CASE WHEN h.fund_id = ft.from_fund_id THEN ft.to_fund_id ELSE ft.from_fund_id END)
-            ELSE p.party_id
-          END AS party_id,
+        CASE
+          WHEN h.record_type = 'transfer'
+            THEN (CASE WHEN h.fund_id = ft.from_fund_id THEN ft.to_fund_id ELSE ft.from_fund_id END)
+          ELSE p.party_id
+        END AS party_id,
 
-          COALESCE(
-            c.name,
-            s.name,
-            pt.name,
-            CASE WHEN h.fund_id = ft.from_fund_id THEN fTo.name ELSE fFrom.name END
-          ) AS party_name,
+        COALESCE(
+          c.name,
+          s.name,
+          pt.name,
+          CASE WHEN h.fund_id = ft.from_fund_id THEN fTo.name ELSE fFrom.name END
+        ) AS party_name,
 
-          CASE
+        CASE
           WHEN h.record_type = 'transfer' THEN 'transfer'
           WHEN h.record_type = 'payment' THEN 'payment'
         END AS transaction_type,
@@ -172,74 +183,67 @@ function fetchFundHistory(
           WHEN h.record_type = 'payment' THEN h.payment_id
         END AS transaction_id,
 
-          COALESCE(p.exchange_rate, ft.exchange_rate)   AS exchange_rate,
-          COALESCE(p.effective_rate, ft.effective_rate) AS effective_rate,
+        COALESCE(p.exchange_rate, ft.exchange_rate)   AS exchange_rate,
+        COALESCE(p.effective_rate, ft.effective_rate) AS effective_rate,
 
-          SUM(
-            CASE
-              WHEN h.movement_type = 'in' THEN h.amount
-              WHEN h.movement_type = 'out' THEN -h.amount
-              ELSE 0
-            END
-          ) OVER (
-            PARTITION BY h.fund_id
-            ORDER BY datetime(h.date), h.id
-          ) AS running_balance
+        SUM(
+          CASE
+            WHEN h.movement_type = 'in' THEN h.amount
+            WHEN h.movement_type = 'out' THEN -h.amount
+            ELSE 0
+          END
+        ) OVER (
+          PARTITION BY h.fund_id
+          ORDER BY h.date, h.id
+        ) AS running_balance
 
-        FROM fund_history h
+      FROM fund_history h
 
-        LEFT JOIN payments p
-          ON h.record_type = 'payment' AND p.id = h.payment_id
+      LEFT JOIN payments p
+        ON h.record_type = 'payment' AND p.id = h.payment_id
 
-        LEFT JOIN customers c
-          ON p.party_type = 'customer' AND c.id = p.party_id
+      LEFT JOIN customers c
+        ON p.party_type = 'customer' AND c.id = p.party_id
 
-        LEFT JOIN suppliers s
-          ON p.party_type = 'supplier' AND s.id = p.party_id
+      LEFT JOIN suppliers s
+        ON p.party_type = 'supplier' AND s.id = p.party_id
 
-        LEFT JOIN partners pt
-          ON p.party_type = 'partner' AND pt.id = p.party_id
+      LEFT JOIN partners pt
+        ON p.party_type = 'partner' AND pt.id = p.party_id
 
-        LEFT JOIN fund_transfers ft
-          ON h.record_type = 'transfer' AND ft.id = h.payment_id
+      LEFT JOIN fund_transfers ft
+        ON h.record_type = 'transfer' AND ft.id = h.payment_id
 
-        LEFT JOIN funds fFrom
-          ON fFrom.id = ft.from_fund_id
+      LEFT JOIN funds fFrom
+        ON fFrom.id = ft.from_fund_id
 
-        LEFT JOIN funds fTo
-          ON fTo.id = ft.to_fund_id
+      LEFT JOIN funds fTo
+        ON fTo.id = ft.to_fund_id
 
-        WHERE h.fund_id = ?
-      )
-      SELECT * FROM full_history fh
-      WHERE 1=1 ${dateFilter}
-      ORDER BY datetime(date) DESC, id DESC
-      ${pagingClause}
-      `
+      WHERE h.fund_id = $1
     )
-    .all(fundId, ...dateValues, ...pagingValues);
+    SELECT * FROM full_history fh
+    WHERE 1=1 ${dateFilter}
+    ORDER BY date DESC, id DESC
+    ${pagingClause}`,
+    [fundId, ...dateValues, ...pagingValues],
+  );
 
-  const plainDateFilter = dateConditions.length
-    ? `AND ${dateConditions.join(" AND ").replace(/fh\./g, "")}`
-    : "";
+  const { rows: totalRows } = await queryFn(
+    `SELECT COUNT(*) AS total FROM fund_history WHERE fund_id = $1 ${dateFilter.replace(/fh\./g, "")}`,
+    [fundId, ...dateValues],
+  );
+  const total = Number(totalRows[0].total);
 
-  const { total } = db
-    .prepare(
-      `SELECT COUNT(*) AS total FROM fund_history WHERE fund_id = ? ${plainDateFilter}`
-    )
-    .get(fundId, ...dateValues);
-
-  const totals = db
-    .prepare(
-      `
-      SELECT
-        COALESCE(SUM(CASE WHEN movement_type = 'in' THEN amount ELSE 0 END), 0) AS totalIn,
-        COALESCE(SUM(CASE WHEN movement_type = 'out' THEN amount ELSE 0 END), 0) AS totalOut
-      FROM fund_history
-      WHERE fund_id = ? ${plainDateFilter}
-      `
-    )
-    .get(fundId, ...dateValues);
+  const { rows: totalsRows } = await queryFn(
+    `SELECT
+      COALESCE(SUM(CASE WHEN movement_type = 'in' THEN amount ELSE 0 END), 0) AS "totalIn",
+      COALESCE(SUM(CASE WHEN movement_type = 'out' THEN amount ELSE 0 END), 0) AS "totalOut"
+    FROM fund_history
+    WHERE fund_id = $1 ${dateFilter.replace(/fh\./g, "")}`,
+    [fundId, ...dateValues],
+  );
+  const totals = totalsRows[0];
 
   return {
     data: rows,
@@ -253,7 +257,7 @@ function fetchFundHistory(
 }
 
 export default function registerFundIPC() {
-  ipcMain.handle("create-fund", (event, data) => {
+  ipcMain.handle("create-fund", async (event, data) => {
     if (!data.name || !data.currency_id) {
       return { success: false, error: "MISSING_REQUIRED_FIELDS" };
     }
@@ -262,24 +266,22 @@ export default function registerFundIPC() {
     const balanceType =
       data.balance_type === "decrease" ? "decrease" : "increase";
 
-    const createFundTxn = db.transaction((data) => {
-      const result = db
-        .prepare(
-          `
-          INSERT INTO funds (name, currency_id)
-          VALUES (?, ?)
-        `
-        )
-        .run(data.name, data.currency_id);
+    const client = await getClient();
+    try {
+      await client.query("BEGIN");
 
-      const fundId = result.lastInsertRowid;
+      const result = await client.query(
+        `INSERT INTO funds (name, currency_id) VALUES ($1, $2) RETURNING id`,
+        [data.name, data.currency_id],
+      );
+      const fundId = result.rows[0].id;
 
       if (initialBalance !== 0) {
         const openingBalanceDate = data.date
           ? `${data.date.slice(0, 10)} 00:00:00`
           : `${new Date().getFullYear()}-01-01 00:00:00`;
 
-        createFundHistory(db, {
+        await createFundHistory(client.query.bind(client), {
           fund_id: fundId,
           record_type: "opening_balance",
           movement_type: balanceType === "increase" ? "in" : "out",
@@ -289,31 +291,27 @@ export default function registerFundIPC() {
         });
       }
 
-      return fundId;
-    });
-
-    try {
-      const fundId = createFundTxn(data);
+      await client.query("COMMIT");
       return { success: true, id: fundId };
     } catch (err) {
+      await client.query("ROLLBACK");
       console.error("Failed to create fund:", err);
       return { success: false, error: err.message || String(err) };
+    } finally {
+      client.release();
     }
   });
 
-  ipcMain.handle("update-fund", (event, data) => {
+  ipcMain.handle("update-fund", async (event, data) => {
     if (!data.name) {
       return { success: false, error: "MISSING_REQUIRED_FIELDS" };
     }
 
     try {
-      db.prepare(
-        `
-        UPDATE funds
-        SET name = ?
-        WHERE id = ?
-      `
-      ).run(data.name, data.id);
+      await query(`UPDATE funds SET name = $1 WHERE id = $2`, [
+        data.name,
+        data.id,
+      ]);
 
       return { success: true };
     } catch (err) {
@@ -322,25 +320,18 @@ export default function registerFundIPC() {
     }
   });
 
-  ipcMain.handle("delete-fund", (event, id) => {
+  ipcMain.handle("delete-fund", async (event, id) => {
     try {
-      const { count } = db
-        .prepare(
-          `
-        SELECT COUNT(*) AS count FROM fund_history WHERE fund_id = ?
-      `
-        )
-        .get(id);
+      const { rows } = await query(
+        `SELECT COUNT(*) AS count FROM fund_history WHERE fund_id = $1`,
+        [id],
+      );
 
-      if (count > 0) {
+      if (Number(rows[0].count) > 0) {
         return { success: false, error: "FUND_HAS_HISTORY" };
       }
 
-      db.prepare(
-        `
-        DELETE FROM funds WHERE id = ?
-      `
-      ).run(id);
+      await query(`DELETE FROM funds WHERE id = $1`, [id]);
 
       return { success: true };
     } catch (err) {
@@ -349,16 +340,14 @@ export default function registerFundIPC() {
     }
   });
 
-  ipcMain.handle("get-funds", () => {
-    const funds = db
-      .prepare(
-        `
-      SELECT
+  ipcMain.handle("get-funds", async () => {
+    const { rows: funds } = await query(
+      `SELECT
         f.*,
         c.name as currency_name,
         c.code as currency_code,
         c.symbol as currency_symbol,
-        c.exchangeRate as currency_exchangeRate,
+        c.exchange_rate as "currency_exchangeRate",
         COALESCE(
           SUM(
             CASE
@@ -372,10 +361,8 @@ export default function registerFundIPC() {
       FROM funds f
       LEFT JOIN currencies c ON c.id = f.currency_id
       LEFT JOIN fund_history fh ON fh.fund_id = f.id
-      GROUP BY f.id
-    `
-      )
-      .all();
+      GROUP BY f.id, c.name, c.code, c.symbol, c.exchange_rate`,
+    );
 
     return funds.map((f) => ({
       ...f,
@@ -383,48 +370,44 @@ export default function registerFundIPC() {
     }));
   });
 
-  ipcMain.handle("get-fund", (event, id) => {
-    const fund = db
-      .prepare(
-        `
-      SELECT 
+  ipcMain.handle("get-fund", async (event, id) => {
+    const { rows } = await query(
+      `SELECT
         f.*,
         c.name as currency_name,
         c.code as currency_code,
         c.symbol as currency_symbol,
-        c.exchangeRate as currency_exchangeRate
+        c.exchange_rate as "currency_exchangeRate"
       FROM funds f
       LEFT JOIN currencies c ON c.id = f.currency_id
-      WHERE f.id = ?
-    `
-      )
-      .get(id);
+      WHERE f.id = $1`,
+      [id],
+    );
 
-    return fund;
+    return rows[0];
   });
 
-  ipcMain.handle("get-fund-earliest-date", (event, { fundId }) => {
+  ipcMain.handle("get-fund-earliest-date", async (event, { fundId }) => {
     try {
       if (!fundId) {
         return { success: true, minDate: null };
       }
 
-      const row = db
-        .prepare(
-          `SELECT MIN(date) AS minDate FROM fund_history WHERE fund_id = ?`
-        )
-        .get(fundId);
-      return { success: true, minDate: row?.minDate || null };
+      const { rows } = await query(
+        `SELECT MIN(date) AS "minDate" FROM fund_history WHERE fund_id = $1`,
+        [fundId],
+      );
+      return { success: true, minDate: rows[0]?.minDate || null };
     } catch (err) {
       return { success: false, error: err.message || String(err) };
     }
   });
 
-  ipcMain.handle("get-fund-history", (event, params) =>
-    fetchFundHistory(db, params)
+  ipcMain.handle("get-fund-history", async (event, params) =>
+    fetchFundHistory(query, params),
   );
 
-  ipcMain.handle("transfer-fund-to-fund", (event, transferData) => {
+  ipcMain.handle("transfer-fund-to-fund", async (event, transferData) => {
     try {
       const {
         from_fund_id,
@@ -450,71 +433,56 @@ export default function registerFundIPC() {
       }
 
       if (Number(deduct_amount) <= 0) {
-        return {
-          success: false,
-          message: "Invalid transfer amount.",
-        };
+        return { success: false, message: "Invalid transfer amount." };
       }
 
       if (Number(receive_amount) <= 0) {
-        return {
-          success: false,
-          message: "Invalid receive amount.",
-        };
+        return { success: false, message: "Invalid receive amount." };
       }
 
-      const fromFund = db
-        .prepare(
-          `
-          SELECT f.*, c.exchangeRate AS currency_exchangeRate, c.code AS currency_code
-          FROM funds f
-          LEFT JOIN currencies c ON c.id = f.currency_id
-          WHERE f.id = ?
-        `
-        )
-        .get(from_fund_id);
+      const { rows: fromFundRows } = await query(
+        `SELECT f.*, c.exchange_rate AS "currency_exchangeRate", c.code AS currency_code
+         FROM funds f
+         LEFT JOIN currencies c ON c.id = f.currency_id
+         WHERE f.id = $1`,
+        [from_fund_id],
+      );
+      const fromFund = fromFundRows[0];
 
-      const toFund = db
-        .prepare(
-          `
-          SELECT f.*, c.exchangeRate AS currency_exchangeRate, c.code AS currency_code
-          FROM funds f
-          LEFT JOIN currencies c ON c.id = f.currency_id
-          WHERE f.id = ?
-        `
-        )
-        .get(to_fund_id);
+      const { rows: toFundRows } = await query(
+        `SELECT f.*, c.exchange_rate AS "currency_exchangeRate", c.code AS currency_code
+         FROM funds f
+         LEFT JOIN currencies c ON c.id = f.currency_id
+         WHERE f.id = $1`,
+        [to_fund_id],
+      );
+      const toFund = toFundRows[0];
 
       if (!fromFund || !toFund) {
-        return {
-          success: false,
-          message: "Selected fund not found.",
-        };
+        return { success: false, message: "Selected fund not found." };
       }
 
-      // Server-derived, never trusted from the client — same principle as
-      // status/effective_rate elsewhere: the funds' own rates are authoritative.
       const nominalRate =
         Number(toFund.currency_exchangeRate || 1) /
         Number(fromFund.currency_exchangeRate || 1);
 
       const effectiveRate = Number(receive_amount) / Number(deduct_amount);
 
-      const transaction = db.transaction(() => {
+      const client = await getClient();
+      try {
+        await client.query("BEGIN");
+
         const dateOnly = (date || new Date().toISOString()).slice(0, 10);
         const time = new Date().toTimeString().slice(0, 8);
         const fullDateTime = `${dateOnly} ${time}`;
 
-        const transferResult = db
-          .prepare(
-            `
-          INSERT INTO fund_transfers
-          (from_fund_id, to_fund_id, deduct_amount, receive_amount, exchange_rate,
-           effective_rate, note, date, created_by)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `
-          )
-          .run(
+        const transferResult = await client.query(
+          `INSERT INTO fund_transfers
+           (from_fund_id, to_fund_id, deduct_amount, receive_amount, exchange_rate,
+            effective_rate, note, date, created_by)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+           RETURNING id`,
+          [
             from_fund_id,
             to_fund_id,
             Number(deduct_amount),
@@ -523,12 +491,12 @@ export default function registerFundIPC() {
             effectiveRate,
             note || null,
             fullDateTime,
-            transferData.created_by
-          );
+            transferData.created_by,
+          ],
+        );
+        const transferId = transferResult.rows[0].id;
 
-        const transferId = transferResult.lastInsertRowid;
-
-        createFundHistory(db, {
+        await createFundHistory(client.query.bind(client), {
           fund_id: from_fund_id,
           record_type: "transfer",
           movement_type: "out",
@@ -538,7 +506,7 @@ export default function registerFundIPC() {
           date: fullDateTime,
         });
 
-        createFundHistory(db, {
+        await createFundHistory(client.query.bind(client), {
           fund_id: to_fund_id,
           record_type: "transfer",
           movement_type: "in",
@@ -548,25 +516,25 @@ export default function registerFundIPC() {
           date: fullDateTime,
         });
 
+        await client.query("COMMIT");
         return {
           success: true,
           message: "Transfer completed successfully.",
           transferId,
         };
-      });
-
-      return transaction();
+      } catch (err) {
+        await client.query("ROLLBACK");
+        throw err;
+      } finally {
+        client.release();
+      }
     } catch (error) {
       console.error("Transfer Fund Error:", error);
-
-      return {
-        success: false,
-        message: error.message || "Transfer failed.",
-      };
+      return { success: false, message: error.message || "Transfer failed." };
     }
   });
 
-  ipcMain.handle("update-fund-transfer", (event, data) => {
+  ipcMain.handle("update-fund-transfer", async (event, data) => {
     try {
       const {
         id,
@@ -597,61 +565,51 @@ export default function registerFundIPC() {
         return { success: false, message: "Invalid transfer amounts." };
       }
 
-      const existing = db
-        .prepare("SELECT * FROM fund_transfers WHERE id = ?")
-        .get(id);
+      const { rows: existingRows } = await query(
+        "SELECT * FROM fund_transfers WHERE id = $1",
+        [id],
+      );
+      const existing = existingRows[0];
 
       if (!existing) {
         return { success: false, message: "Transfer not found." };
       }
 
-      const fromFund = db
-        .prepare(
-          `
-          SELECT f.*, c.exchangeRate AS currency_exchangeRate, c.code AS currency_code
-          FROM funds f
-          LEFT JOIN currencies c ON c.id = f.currency_id
-          WHERE f.id = ?
-        `
-        )
-        .get(from_fund_id);
+      const { rows: fromFundRows } = await query(
+        `SELECT f.*, c.exchange_rate AS "currency_exchangeRate", c.code AS currency_code
+         FROM funds f
+         LEFT JOIN currencies c ON c.id = f.currency_id
+         WHERE f.id = $1`,
+        [from_fund_id],
+      );
+      const fromFund = fromFundRows[0];
 
-      const toFund = db
-        .prepare(
-          `
-          SELECT f.*, c.exchangeRate AS currency_exchangeRate, c.code AS currency_code
-          FROM funds f
-          LEFT JOIN currencies c ON c.id = f.currency_id
-          WHERE f.id = ?
-        `
-        )
-        .get(to_fund_id);
+      const { rows: toFundRows } = await query(
+        `SELECT f.*, c.exchange_rate AS "currency_exchangeRate", c.code AS currency_code
+         FROM funds f
+         LEFT JOIN currencies c ON c.id = f.currency_id
+         WHERE f.id = $1`,
+        [to_fund_id],
+      );
+      const toFund = toFundRows[0];
 
       if (!fromFund || !toFund) {
         return { success: false, message: "Selected fund not found." };
       }
 
-      // Verify both linked fund_history rows actually exist before touching
-      // anything — if either is missing, this transfer's history is already
-      // corrupted and we should fail loudly rather than silently no-op an
-      // UPDATE that matches zero rows.
-      const outRow = db
-        .prepare(
-          `
-        SELECT * FROM fund_history
-        WHERE payment_id = ? AND record_type = 'transfer' AND movement_type = 'out'
-      `
-        )
-        .get(id);
+      const { rows: outRows } = await query(
+        `SELECT * FROM fund_history
+         WHERE payment_id = $1 AND record_type = 'transfer' AND movement_type = 'out'`,
+        [id],
+      );
+      const outRow = outRows[0];
 
-      const inRow = db
-        .prepare(
-          `
-        SELECT * FROM fund_history
-        WHERE payment_id = ? AND record_type = 'transfer' AND movement_type = 'in'
-      `
-        )
-        .get(id);
+      const { rows: inRows } = await query(
+        `SELECT * FROM fund_history
+         WHERE payment_id = $1 AND record_type = 'transfer' AND movement_type = 'in'`,
+        [id],
+      );
+      const inRow = inRows[0];
 
       if (!outRow || !inRow) {
         return {
@@ -667,78 +625,74 @@ export default function registerFundIPC() {
 
       const effectiveRate = Number(receive_amount) / Number(deduct_amount);
 
-      const transaction = db.transaction(() => {
-        const dateOnly = (
-          date ||
-          existing.date ||
-          new Date().toISOString()
-        ).slice(0, 10);
+      const client = await getClient();
+      try {
+        await client.query("BEGIN");
+
+        const dateOnly = (date || existing.date || new Date().toISOString())
+          .toString()
+          .slice(0, 10);
         const time = new Date().toTimeString().slice(0, 8);
         const fullDateTime = `${dateOnly} ${time}`;
 
-        db.prepare(
-          `
-          UPDATE fund_transfers
-          SET from_fund_id = ?,
-              to_fund_id = ?,
-              deduct_amount = ?,
-              receive_amount = ?,
-              exchange_rate = ?,
-              effective_rate = ?,
-              note = ?,
-              date = ?
-          WHERE id = ?
-        `
-        ).run(
-          from_fund_id,
-          to_fund_id,
-          Number(deduct_amount),
-          Number(receive_amount),
-          nominalRate,
-          effectiveRate,
-          note || null,
-          fullDateTime,
-          id
+        await client.query(
+          `UPDATE fund_transfers
+           SET from_fund_id = $1,
+               to_fund_id = $2,
+               deduct_amount = $3,
+               receive_amount = $4,
+               exchange_rate = $5,
+               effective_rate = $6,
+               note = $7,
+               date = $8
+           WHERE id = $9`,
+          [
+            from_fund_id,
+            to_fund_id,
+            Number(deduct_amount),
+            Number(receive_amount),
+            nominalRate,
+            effectiveRate,
+            note || null,
+            fullDateTime,
+            id,
+          ],
         );
 
-        db.prepare(
-          `
-          UPDATE fund_history
-          SET fund_id = ?,
-              amount = ?,
-              note = ?,
-              date = ?
-          WHERE id = ?
-        `
-        ).run(
-          from_fund_id,
-          Number(deduct_amount),
-          note || `Transferred to ${toFund.name}`,
-          fullDateTime,
-          outRow.id
+        await client.query(
+          `UPDATE fund_history
+           SET fund_id = $1, amount = $2, note = $3, date = $4
+           WHERE id = $5`,
+          [
+            from_fund_id,
+            Number(deduct_amount),
+            note || `Transferred to ${toFund.name}`,
+            fullDateTime,
+            outRow.id,
+          ],
         );
 
-        db.prepare(
-          `
-          UPDATE fund_history
-          SET fund_id = ?,
-              amount = ?,
-              note = ?,
-              date = ?
-          WHERE id = ?
-        `
-        ).run(
-          to_fund_id,
-          Number(receive_amount),
-          note || `Received from ${fromFund.name}`,
-          fullDateTime,
-          inRow.id
+        await client.query(
+          `UPDATE fund_history
+           SET fund_id = $1, amount = $2, note = $3, date = $4
+           WHERE id = $5`,
+          [
+            to_fund_id,
+            Number(receive_amount),
+            note || `Received from ${fromFund.name}`,
+            fullDateTime,
+            inRow.id,
+          ],
         );
 
+        await client.query("COMMIT");
         return { success: true, message: "Transfer updated successfully." };
-      });
-
-      return transaction();
+      } catch (err) {
+        await client.query("ROLLBACK");
+        throw err;
+      } finally {
+        client.release();
+      }
     } catch (error) {
       console.error("Update Fund Transfer Error:", error);
       return {
@@ -748,34 +702,40 @@ export default function registerFundIPC() {
     }
   });
 
-  ipcMain.handle("delete-fund-transfer", (event, id) => {
+  ipcMain.handle("delete-fund-transfer", async (event, id) => {
     try {
       if (!id) {
         return { success: false, message: "Transfer id is required." };
       }
 
-      const existing = db
-        .prepare("SELECT * FROM fund_transfers WHERE id = ?")
-        .get(id);
-
-      if (!existing) {
+      const { rows: existingRows } = await query(
+        "SELECT * FROM fund_transfers WHERE id = $1",
+        [id],
+      );
+      if (!existingRows[0]) {
         return { success: false, message: "Transfer not found." };
       }
 
-      const transaction = db.transaction(() => {
-        db.prepare(
-          `
-          DELETE FROM fund_history
-          WHERE payment_id = ? AND record_type IN ('transfer')
-        `
-        ).run(id);
+      const client = await getClient();
+      try {
+        await client.query("BEGIN");
 
-        db.prepare("DELETE FROM fund_transfers WHERE id = ?").run(id);
+        await client.query(
+          `DELETE FROM fund_history
+           WHERE payment_id = $1 AND record_type = 'transfer'`,
+          [id],
+        );
 
+        await client.query("DELETE FROM fund_transfers WHERE id = $1", [id]);
+
+        await client.query("COMMIT");
         return { success: true, message: "Transfer deleted successfully." };
-      });
-
-      return transaction();
+      } catch (err) {
+        await client.query("ROLLBACK");
+        throw err;
+      } finally {
+        client.release();
+      }
     } catch (error) {
       console.error("Delete Fund Transfer Error:", error);
       return {
@@ -785,65 +745,66 @@ export default function registerFundIPC() {
     }
   });
 
-  ipcMain.handle("get-fund-transfers", (event, params = {}) => {
+  ipcMain.handle("get-fund-transfers", async (event, params = {}) => {
     const page = Math.max(1, Number(params.page) || 1);
     const limit = Math.max(1, Number(params.limit) || 20);
     const offset = (page - 1) * limit;
 
     const conditions = [];
     const values = [];
+    let paramIndex = 1;
 
     if (params.fundId) {
-      conditions.push("(t.from_fund_id = ? OR t.to_fund_id = ?)");
+      conditions.push(
+        `(t.from_fund_id = $${paramIndex} OR t.to_fund_id = $${paramIndex + 1})`,
+      );
       values.push(params.fundId, params.fundId);
+      paramIndex += 2;
     }
 
     if (params.fromFundId) {
-      conditions.push("t.from_fund_id = ?");
+      conditions.push(`t.from_fund_id = $${paramIndex}`);
       values.push(params.fromFundId);
+      paramIndex++;
     }
 
     if (params.toFundId) {
-      conditions.push("t.to_fund_id = ?");
+      conditions.push(`t.to_fund_id = $${paramIndex}`);
       values.push(params.toFundId);
+      paramIndex++;
     }
 
-    // Wrapped in date(...) so time-of-day doesn't push same-day rows
-    // outside an inclusive range boundary.
     if (params.dateFrom) {
-      conditions.push("date(t.date) >= date(?)");
+      conditions.push(`t.date::date >= $${paramIndex}::date`);
       values.push(params.dateFrom);
+      paramIndex++;
     }
 
     if (params.dateTo) {
-      conditions.push("date(t.date) <= date(?)");
+      conditions.push(`t.date::date <= $${paramIndex}::date`);
       values.push(params.dateTo);
+      paramIndex++;
     }
 
     const whereClause = conditions.length
       ? `WHERE ${conditions.join(" AND ")}`
       : "";
 
-    const transfers = db
-      .prepare(
-        `
-      SELECT
+    const { rows: transfers } = await query(
+      `SELECT
         t.*,
         ff.name AS from_fund_name,
         ff.currency_code AS from_fund_currency,
         tf.name AS to_fund_name,
         creator.full_name AS created_by_name,
-  
         tf.currency_code AS to_fund_currency
-  
       FROM fund_transfers t
       LEFT JOIN (
         SELECT f.id, f.name, c.code AS currency_code
         FROM funds f
         LEFT JOIN currencies c ON c.id = f.currency_id
       ) ff ON ff.id = t.from_fund_id
-      LEFT JOIN users creator
-      ON creator.id = t.created_by
+      LEFT JOIN users creator ON creator.id = t.created_by
       LEFT JOIN (
         SELECT f.id, f.name, c.code AS currency_code
         FROM funds f
@@ -851,18 +812,15 @@ export default function registerFundIPC() {
       ) tf ON tf.id = t.to_fund_id
       ${whereClause}
       ORDER BY t.date DESC, t.id DESC
-      LIMIT ? OFFSET ?
-    `
-      )
-      .all(...values, limit, offset);
+      LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`,
+      [...values, limit, offset],
+    );
 
-    const { total } = db
-      .prepare(
-        `
-      SELECT COUNT(*) AS total FROM fund_transfers t ${whereClause}
-    `
-      )
-      .get(...values);
+    const { rows: totalRows } = await query(
+      `SELECT COUNT(*) AS total FROM fund_transfers t ${whereClause}`,
+      values,
+    );
+    const total = Number(totalRows[0].total);
 
     return {
       data: transfers,
@@ -873,30 +831,28 @@ export default function registerFundIPC() {
     };
   });
 
-  ipcMain.handle("get-fund-transfer", (event, id) => {
-    return db
-      .prepare(
-        `
-        SELECT
-          t.*,
-          ff.name AS from_fund_name,
-          ffc.code AS from_fund_currency_code,
-          ffc.symbol AS from_fund_currency_symbol,
-          tf.name AS to_fund_name,
-          tfc.code AS to_fund_currency_code,
-          creator.full_name AS created_by_name,
-          tfc.symbol AS to_fund_currency_symbol
-        FROM fund_transfers t
-        LEFT JOIN funds ff ON ff.id = t.from_fund_id
-        LEFT JOIN currencies ffc ON ffc.id = ff.currency_id
-        LEFT JOIN funds tf ON tf.id = t.to_fund_id
-        LEFT JOIN currencies tfc ON tfc.id = tf.currency_id
-        LEFT JOIN users creator
-        ON creator.id = t.created_by
-        WHERE t.id = ?
-        `
-      )
-      .get(id);
+  ipcMain.handle("get-fund-transfer", async (event, id) => {
+    const { rows } = await query(
+      `SELECT
+        t.*,
+        ff.name AS from_fund_name,
+        ffc.code AS from_fund_currency_code,
+        ffc.symbol AS from_fund_currency_symbol,
+        tf.name AS to_fund_name,
+        tfc.code AS to_fund_currency_code,
+        creator.full_name AS created_by_name,
+        tfc.symbol AS to_fund_currency_symbol
+      FROM fund_transfers t
+      LEFT JOIN funds ff ON ff.id = t.from_fund_id
+      LEFT JOIN currencies ffc ON ffc.id = ff.currency_id
+      LEFT JOIN funds tf ON tf.id = t.to_fund_id
+      LEFT JOIN currencies tfc ON tfc.id = tf.currency_id
+      LEFT JOIN users creator ON creator.id = t.created_by
+      WHERE t.id = $1`,
+      [id],
+    );
+
+    return rows[0];
   });
 
   ipcMain.handle(
@@ -910,14 +866,18 @@ export default function registerFundIPC() {
           data: rows,
           totalIn,
           totalOut,
-        } = fetchFundHistory(db, {
+        } = await fetchFundHistory(query, {
           fundId,
           startDate,
           endDate,
           exportAll: true,
         });
 
-        const fund = db.prepare(`SELECT * FROM funds WHERE id = ?`).get(fundId);
+        const { rows: fundRows } = await query(
+          "SELECT * FROM funds WHERE id = $1",
+          [fundId],
+        );
+        const fund = fundRows[0];
 
         const workbook = new ExcelJS.Workbook();
         const sheet = workbook.addWorksheet(L.title);
@@ -972,7 +932,7 @@ export default function registerFundIPC() {
       } catch (err) {
         return { success: false, error: err.message || String(err) };
       }
-    }
+    },
   );
 
   ipcMain.handle(
@@ -986,14 +946,18 @@ export default function registerFundIPC() {
           data: rows,
           totalIn,
           totalOut,
-        } = fetchFundHistory(db, {
+        } = await fetchFundHistory(query, {
           fundId,
           startDate,
           endDate,
           exportAll: true,
         });
 
-        const fund = db.prepare(`SELECT * FROM funds WHERE id = ?`).get(fundId);
+        const { rows: fundRows } = await query(
+          "SELECT * FROM funds WHERE id = $1",
+          [fundId],
+        );
+        const fund = fundRows[0];
 
         const rowsHtml = rows
           .map(
@@ -1008,7 +972,7 @@ export default function registerFundIPC() {
           <td>${r.note || ""}</td>
           <td class="right">${Number(r.running_balance).toFixed(2)}</td>
         </tr>
-      `
+      `,
           )
           .join("");
 
@@ -1048,7 +1012,7 @@ export default function registerFundIPC() {
 
         const win = new BrowserWindow({ show: false });
         await win.loadURL(
-          "data:text/html;charset=utf-8," + encodeURIComponent(html)
+          "data:text/html;charset=utf-8," + encodeURIComponent(html),
         );
 
         const pdfBuffer = await win.webContents.printToPDF({
@@ -1072,6 +1036,6 @@ export default function registerFundIPC() {
       } catch (err) {
         return { success: false, error: err.message || String(err) };
       }
-    }
+    },
   );
 }

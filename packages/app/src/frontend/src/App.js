@@ -153,7 +153,22 @@ export default function App() {
     const checkDb = async () => {
       try {
         const hasConfig = await window.db?.hasConfig();
-        setDbStatus({ hasConfig: !!hasConfig });
+        if (!hasConfig) {
+          setDbStatus({ hasConfig: false });
+          return;
+        }
+
+        // A config file existing isn't enough — actually verify it still
+        // connects. If the host's IP changed, or it's offline, this
+        // catches that and routes back to DbSetupPage automatically,
+        // rather than leaving the user stuck with a broken app and no
+        // way to fix it themselves.
+        const result = await window.db?.checkSavedConnection();
+        setDbStatus({
+          hasConfig: !!result?.success,
+          previouslyConnected: true,
+          lastError: result?.success ? null : result?.error,
+        });
       } catch (err) {
         console.error(err);
         setDbStatus({ hasConfig: false });
@@ -193,7 +208,12 @@ export default function App() {
   if (dbStatus === null) return <div>{t("common.loading")}</div>;
 
   if (!dbStatus.hasConfig) {
-    return <DbSetupPage onConnected={() => setDbStatus({ hasConfig: true })} />;
+    return (
+      <DbSetupPage
+        previouslyConnected={dbStatus.previouslyConnected}
+        onConnected={() => setDbStatus({ hasConfig: true })}
+      />
+    );
   }
 
   if (isSetup === null) return <div>{t("common.loading")}</div>;

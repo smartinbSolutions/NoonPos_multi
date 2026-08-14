@@ -1,3 +1,5 @@
+// packages/app/src/backend/ipc/serial.ipc.js
+
 import { BrowserWindow, ipcMain } from "electron";
 import { SerialPort } from "serialport";
 import { ReadlineParser } from "@serialport/parser-readline";

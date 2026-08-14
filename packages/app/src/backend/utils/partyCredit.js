@@ -1,3 +1,4 @@
+// packages/app/src/backend/utils/partyCredit.js
 import createPaymentAllocation from "./createPaymentAllocations";
 
 // Whitelisted table map — invoice_type is passed as a bound SQL parameter,
@@ -16,27 +17,27 @@ const OPEN_INVOICE_TABLES = {
   ],
 };
 
-function getOpenInvoicesForParty(db, { partyId, partyType }) {
+async function getOpenInvoicesForParty(query, { partyId, partyType }) {
   const configs = OPEN_INVOICE_TABLES[partyType] || [];
   const openInvoices = [];
 
   for (const { invoice_type, table, column } of configs) {
-    const rows = db
-      .prepare(
-        `
-        SELECT
-          inv.id AS invoice_id,
-          inv.date,
-          inv.net_total - COALESCE(SUM(pa.amount), 0) AS remaining
-        FROM ${table} inv
-        LEFT JOIN payment_allocations pa
-          ON pa.invoice_id = inv.id AND pa.invoice_type = ?
-        WHERE inv.${column} = ?
-        GROUP BY inv.id
-        HAVING remaining > 0
-        `
-      )
-      .all(invoice_type, partyId);
+    // Postgres can't reference a SELECT alias ("remaining") inside HAVING
+    // in the same query — the expression must be repeated, same fix as
+    // customers.ipc.js's balance filter.
+    const { rows } = await query(
+      `SELECT
+        inv.id AS invoice_id,
+        inv.date,
+        inv.net_total - COALESCE(SUM(pa.amount), 0) AS remaining
+      FROM ${table} inv
+      LEFT JOIN payment_allocations pa
+        ON pa.invoice_id = inv.id AND pa.invoice_type = $1
+      WHERE inv.${column} = $2
+      GROUP BY inv.id
+      HAVING inv.net_total - COALESCE(SUM(pa.amount), 0) > 0`,
+      [invoice_type, partyId],
+    );
 
     rows.forEach((r) =>
       openInvoices.push({
@@ -44,7 +45,7 @@ function getOpenInvoicesForParty(db, { partyId, partyType }) {
         invoice_type,
         date: r.date,
         remaining: r.remaining,
-      })
+      }),
     );
   }
 
@@ -52,32 +53,32 @@ function getOpenInvoicesForParty(db, { partyId, partyType }) {
   return openInvoices;
 }
 
-export function getPartyCredit(db, { partyId, partyType }) {
-  const payments = db
-    .prepare(
-      `
-      SELECT
-        p.id AS payment_id,
-        p.amount,
-        p.date,
-        p.currency_code,
-        p.fund_id,
-        f.name AS fund_name,
-        COALESCE(SUM(pa.amount), 0) AS allocated,
-        p.amount - COALESCE(SUM(pa.amount), 0) AS available
-      FROM payments p
-      LEFT JOIN payment_allocations pa ON pa.payment_id = p.id
-      LEFT JOIN funds f ON f.id = p.fund_id
-      WHERE p.party_id = ?
-        AND p.party_type = ?
-      GROUP BY p.id
-      HAVING available > 0
-      ORDER BY p.date ASC
-    `
-    )
-    .all(partyId, partyType);
+export async function getPartyCredit(query, { partyId, partyType }) {
+  const { rows: payments } = await query(
+    `SELECT
+      p.id AS payment_id,
+      p.amount,
+      p.date,
+      p.currency_code,
+      p.fund_id,
+      f.name AS fund_name,
+      COALESCE(SUM(pa.amount), 0) AS allocated,
+      p.amount - COALESCE(SUM(pa.amount), 0) AS available
+    FROM payments p
+    LEFT JOIN payment_allocations pa ON pa.payment_id = p.id
+    LEFT JOIN funds f ON f.id = p.fund_id
+    WHERE p.party_id = $1
+      AND p.party_type = $2
+    GROUP BY p.id, f.name
+    HAVING p.amount - COALESCE(SUM(pa.amount), 0) > 0
+    ORDER BY p.date ASC`,
+    [partyId, partyType],
+  );
 
-  const totalAvailable = payments.reduce((sum, p) => sum + p.available, 0);
+  const totalAvailable = payments.reduce(
+    (sum, p) => sum + Number(p.available),
+    0,
+  );
 
   return {
     totalAvailable,
@@ -85,41 +86,38 @@ export function getPartyCredit(db, { partyId, partyType }) {
   };
 }
 
-export function applyPartyCredit(
-  db,
-  { partyId, partyType, invoiceId, invoiceType, amount }
+export async function applyPartyCredit(
+  query,
+  { partyId, partyType, invoiceId, invoiceType, amount },
 ) {
-  const unallocated = db
-    .prepare(
-      `
-      SELECT
-        p.id AS payment_id,
-        p.amount - COALESCE(SUM(pa.amount), 0) AS available
-      FROM payments p
-      LEFT JOIN payment_allocations pa ON pa.payment_id = p.id
-      WHERE p.party_id = ?
-        AND p.party_type = ?
-      GROUP BY p.id
-      HAVING available > 0
-      ORDER BY p.date ASC
-    `
-    )
-    .all(partyId, partyType);
+  const { rows: unallocated } = await query(
+    `SELECT
+      p.id AS payment_id,
+      p.amount - COALESCE(SUM(pa.amount), 0) AS available
+    FROM payments p
+    LEFT JOIN payment_allocations pa ON pa.payment_id = p.id
+    WHERE p.party_id = $1
+      AND p.party_type = $2
+    GROUP BY p.id
+    HAVING p.amount - COALESCE(SUM(pa.amount), 0) > 0
+    ORDER BY p.date ASC`,
+    [partyId, partyType],
+  );
 
   const requested = Number(amount || 0);
   let remaining = requested;
   let totalApplied = 0;
 
-  // No specific invoice given — instead of a specific target, close
-  // whatever open invoices this party has, oldest first, using the
-  // same unallocated payments, oldest first.
   if (!invoiceId) {
-    const openInvoices = getOpenInvoicesForParty(db, { partyId, partyType });
+    const openInvoices = await getOpenInvoicesForParty(query, {
+      partyId,
+      partyType,
+    });
     let paymentIdx = 0;
 
     for (const invoice of openInvoices) {
       if (remaining <= 0) break;
-      let invoiceRemaining = invoice.remaining;
+      let invoiceRemaining = Number(invoice.remaining);
 
       while (
         invoiceRemaining > 0 &&
@@ -127,6 +125,7 @@ export function applyPartyCredit(
         paymentIdx < unallocated.length
       ) {
         const payment = unallocated[paymentIdx];
+        payment.available = Number(payment.available);
 
         if (payment.available <= 0) {
           paymentIdx++;
@@ -135,7 +134,7 @@ export function applyPartyCredit(
 
         const take = Math.min(payment.available, invoiceRemaining, remaining);
 
-        createPaymentAllocation(db, {
+        await createPaymentAllocation(query, {
           payment_id: payment.payment_id,
           invoice_id: invoice.invoice_id,
           invoice_type: invoice.invoice_type,
@@ -161,9 +160,10 @@ export function applyPartyCredit(
   for (const payment of unallocated) {
     if (remaining <= 0) break;
 
-    const take = Math.min(payment.available, remaining);
+    const available = Number(payment.available);
+    const take = Math.min(available, remaining);
 
-    createPaymentAllocation(db, {
+    await createPaymentAllocation(query, {
       payment_id: payment.payment_id,
       invoice_id: invoiceId,
       invoice_type: invoiceType,

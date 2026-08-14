@@ -1,6 +1,7 @@
-export default function createFundHistory(db, data) {
-  const stmt = db.prepare(`
-    INSERT INTO fund_history (
+// packages/app/src/backend/utils/createFundHistory.js
+export default async function createFundHistory(query, data) {
+  return query(
+    `INSERT INTO fund_history (
       fund_id,
       record_type,
       payment_id,
@@ -9,24 +10,15 @@ export default function createFundHistory(db, data) {
       amount,
       note
     )
-    VALUES (
-      @fund_id,
-      @record_type,
-      @payment_id,
-      @date,
-      @movement_type,
-      @amount,
-      @note
-    )
-  `);
-
-  return stmt.run({
-    fund_id: data.fund_id,
-    record_type: data.record_type,
-    payment_id: data.payment_id ?? null,
-    movement_type: data.movement_type,
-    amount: Number(data.amount || 0),
-    note: data.note ?? "",
-    date: data.date || new Date().toISOString(),
-  });
+    VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+    [
+      data.fund_id,
+      data.record_type,
+      data.payment_id ?? null,
+      data.date || new Date().toISOString(),
+      data.movement_type,
+      Number(data.amount || 0),
+      data.note ?? "",
+    ],
+  );
 }

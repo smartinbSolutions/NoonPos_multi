@@ -34,4 +34,18 @@ export default function registerDbSetupIPC() {
     // the password back to the user.
     return loadDbConfig();
   });
+
+  // Verifies the ALREADY-SAVED config still actually works — distinct
+  // from db:hasConfig (which only checks a file exists) and
+  // db:testConnection (which tests a NEW, not-yet-saved config from the
+  // form). Used on app launch to detect "the host's IP changed" or
+  // "the host is offline" and route back to DbSetupPage automatically,
+  // rather than leaving the user stuck with no way to fix it themselves.
+  ipcMain.handle("db:checkSavedConnection", async () => {
+    const config = loadDbConfig();
+    if (!config) {
+      return { success: false, error: "DB_NOT_CONFIGURED" };
+    }
+    return testDbConnection(config);
+  });
 }

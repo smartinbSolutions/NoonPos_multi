@@ -27,11 +27,14 @@ export function verifyPin(pin, stored) {
 
 // PINs are hashed+salted, so uniqueness can't be checked with a WHERE clause —
 // loop and compare. Fine at POS-team scale (a handful of users).
-export function isPinTaken(db, pin, excludeUserId = null) {
-  const users = db
-    .prepare("SELECT id, pin_hash FROM users WHERE is_active = 1")
-    .all();
-  return users.some(
-    (u) => u.id !== excludeUserId && verifyPin(pin, u.pin_hash),
+//
+// PORTED: now takes the async `query` function from backend/db.js instead
+// of a synchronous better-sqlite3 instance, and awaits the query.
+export async function isPinTaken(query, pin, excludeUserId = null) {
+  const { rows } = await query(
+    "SELECT id, pin_hash FROM users WHERE is_active = true"
+  );
+  return rows.some(
+    (u) => u.id !== excludeUserId && verifyPin(pin, u.pin_hash)
   );
 }

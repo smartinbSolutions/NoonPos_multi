@@ -1,3 +1,5 @@
+// packages/app/src/backend/utils/helpers.js
+
 // Reuses the same three-language convention as seedData's TRANSLATIONS.
 const INVOICE_LABELS = {
   sales: { en: "Sales Invoice", ar: "فاتورة مبيعات", tr: "Satış Faturası" },
@@ -72,36 +74,43 @@ export function deleteLogoFile(logoValue) {
   }
 }
 
-export function getCompanyLanguage(db) {
-  const row = db
-    .prepare(`SELECT language FROM company_settings ORDER BY id LIMIT 1`)
-    .get();
-  const lang = row?.language;
+// PORTED: async, takes the query function instead of a synchronous db
+// instance. All callers below now await this.
+export async function getCompanyLanguage(query) {
+  const { rows } = await query(
+    "SELECT language FROM company_settings ORDER BY id LIMIT 1",
+  );
+  const lang = rows[0]?.language;
   return ["ar", "en", "tr"].includes(lang) ? lang : "ar";
 }
 
-export function buildDefaultInvoiceName(db, type, invoiceId) {
-  const lang = getCompanyLanguage(db);
+export async function buildDefaultInvoiceName(query, type, invoiceId) {
+  const lang = await getCompanyLanguage(query);
   const label = INVOICE_LABELS[type][lang];
   return `${label} #${invoiceId}`;
 }
 
 // e.g. "Purchase Return #7 for Invoice #3" / "مرتجع مشتريات #7 لفاتورة #3"
-export function buildDefaultReturnNote(db, type, returnId, originalInvoiceId) {
-  const lang = getCompanyLanguage(db);
+export async function buildDefaultReturnNote(
+  query,
+  type,
+  returnId,
+  originalInvoiceId,
+) {
+  const lang = await getCompanyLanguage(query);
   const label = INVOICE_LABELS[type][lang];
   const forWord = FOR_INVOICE_LABEL[lang];
   return `${label} #${returnId} ${forWord} #${originalInvoiceId}`;
 }
 
 // e.g. "Refund #7" / "استرداد #7"
-export function buildDefaultPaymentNote(db, kind, referenceId) {
-  const lang = getCompanyLanguage(db);
+export async function buildDefaultPaymentNote(query, kind, referenceId) {
+  const lang = await getCompanyLanguage(query);
   const label = PAYMENT_LABELS[kind][lang];
   return `${label} #${referenceId}`;
 }
 
-export function buildOpeningBalanceNote(db) {
-  const lang = getCompanyLanguage(db);
+export async function buildOpeningBalanceNote(query) {
+  const lang = await getCompanyLanguage(query);
   return OPENING_BALANCE_LABEL[lang];
 }

@@ -39,24 +39,25 @@ export async function createDatabase(paths) {
   try {
     const dbExists = await databaseExists(client, APP_DATABASE_NAME);
     if (dbExists) {
-      console.log(
-        `[db-setup] Database "${APP_DATABASE_NAME}" already exists, skipping.`
-      );
+      console.log(`[db-setup] Database "${APP_DATABASE_NAME}" already exists, skipping.`);
     } else {
       console.log(`[db-setup] Creating database "${APP_DATABASE_NAME}"...`);
       // Database/role names come from our own constants above, never from
       // user input, so string interpolation here is safe — Postgres doesn't
       // support parameterized identifiers in DDL statements anyway.
-      await client.query(`CREATE DATABASE ${APP_DATABASE_NAME}`);
+      // ENCODING explicit here too as a second safety net, even though
+      // initdb now also forces UTF8 — belt and suspenders against this
+      // database ever silently inheriting a bad encoding again.
+      await client.query(
+        `CREATE DATABASE ${APP_DATABASE_NAME} WITH ENCODING 'UTF8' TEMPLATE template0`
+      );
     }
 
     const roleAlreadyExists = await roleExists(client, APP_USER_NAME);
     let appUserPassword = adminConfig.appUserPassword;
 
     if (roleAlreadyExists) {
-      console.log(
-        `[db-setup] Role "${APP_USER_NAME}" already exists, skipping.`
-      );
+      console.log(`[db-setup] Role "${APP_USER_NAME}" already exists, skipping.`);
       if (!appUserPassword) {
         // Shouldn't normally happen, but guard against a config file that
         // predates this field being added, or was edited by hand.

@@ -3,5 +3,16 @@
   "private": true,
   "workspaces": [
     "packages/*"
-  ]
+  ],
+  "allowScripts": {
+    "better-sqlite3@12.11.1": true,
+    "electron@30.5.1": true,
+    "esbuild@0.21.5": true,
+    "esbuild@0.24.2": true,
+    "electron-winstaller@5.4.4": true,
+    "electron-winstaller@5.4.0": true,
+    "fs-xattr@0.3.1": true,
+    "macos-alias@0.2.12": true,
+    "@serialport/bindings-cpp@13.0.0": true
+  }
 }

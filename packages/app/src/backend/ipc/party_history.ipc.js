@@ -1,7 +1,8 @@
-const { ipcMain, dialog, BrowserWindow } = require("electron");
+// packages/app/src/backend/partyHistory.ipc.js
+import { ipcMain, dialog, BrowserWindow } from "electron";
 import ExcelJS from "exceljs";
 import fs from "fs";
-import db from "../db";
+import { query } from "../dbConnect.js";
 import { getPartyCredit, applyPartyCredit } from "../utils/partyCredit";
 
 const EXPORT_LABELS = {
@@ -104,8 +105,8 @@ const formatReference = (row) => {
   return "";
 };
 
-function fetchPartyHistoryLedger(
-  db,
+async function fetchPartyHistoryLedger(
+  queryFn,
   {
     partyId,
     partyType,
@@ -114,7 +115,7 @@ function fetchPartyHistoryLedger(
     startDate,
     endDate,
     exportAll = false,
-  }
+  },
 ) {
   const currentPage = Math.max(1, Number(page) || 1);
   const perPage = Math.max(1, Number(limit) || 50);
@@ -122,111 +123,107 @@ function fetchPartyHistoryLedger(
 
   const dateConditions = [];
   const dateValues = [];
+  let paramIndex = 3;
 
   if (startDate) {
-    dateConditions.push("date(p.date) >= date(?)");
+    dateConditions.push(`p.date::date >= $${paramIndex}::date`);
     dateValues.push(startDate);
+    paramIndex++;
   }
   if (endDate) {
-    dateConditions.push("date(p.date) <= date(?)");
+    dateConditions.push(`p.date::date <= $${paramIndex}::date`);
     dateValues.push(endDate);
+    paramIndex++;
   }
   const dateFilter = dateConditions.length
     ? `AND ${dateConditions.join(" AND ")}`
     : "";
 
-  const pagingClause = exportAll ? "" : "LIMIT ? OFFSET ?";
+  const pagingClause = exportAll
+    ? ""
+    : `LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`;
   const pagingValues = exportAll ? [] : [perPage, offset];
 
-  const rows = db
-    .prepare(
-      `
-      SELECT
-        p.*,
+  const { rows } = await queryFn(
+    `SELECT
+      p.*,
 
-        -- invoice-side info, resolved by invoice_type
-        COALESCE(si.invoice_name, pi.invoice_name, ex.invoice_name) AS invoice_name,
+      COALESCE(si.invoice_name, pi.invoice_name, ex.invoice_name) AS invoice_name,
 
-        -- payment-side info, resolved via payment_id
-        pay.note AS payment_note,
-        pay.fund_id AS payment_fund_id,
-        f.name AS fund_name,
+      pay.note AS payment_note,
+      pay.fund_id AS payment_fund_id,
+      f.name AS fund_name,
 
-        SUM(
-          CASE
-            WHEN p.movement_type = 'increase' THEN p.amount
-            WHEN p.movement_type = 'decrease' THEN -p.amount
-            ELSE 0
-          END
-        ) OVER (
-          PARTITION BY p.party_type, p.party_id
-          ORDER BY p.id
-        ) AS running_balance
+      SUM(
+        CASE
+          WHEN p.movement_type = 'increase' THEN p.amount
+          WHEN p.movement_type = 'decrease' THEN -p.amount
+          ELSE 0
+        END
+      ) OVER (
+        PARTITION BY p.party_type, p.party_id
+        ORDER BY p.id
+      ) AS running_balance
 
-      FROM party_history p
+    FROM party_history p
 
-      LEFT JOIN sales_invoices si
-        ON p.record_type IN ('invoice','return')
-        AND p.invoice_type IN ('sales','sales_return')
-        AND si.id = p.invoice_id
+    LEFT JOIN sales_invoices si
+      ON p.record_type IN ('invoice','return')
+      AND p.invoice_type IN ('sales','sales_return')
+      AND si.id = p.invoice_id
 
-      LEFT JOIN purchase_invoices pi
-        ON p.record_type IN ('invoice','return')
-        AND p.invoice_type IN ('purchase','purchase_return')
-        AND pi.id = p.invoice_id
+    LEFT JOIN purchase_invoices pi
+      ON p.record_type IN ('invoice','return')
+      AND p.invoice_type IN ('purchase','purchase_return')
+      AND pi.id = p.invoice_id
 
-      LEFT JOIN expense ex
-        ON p.record_type = 'invoice'
-        AND p.invoice_type = 'expense'
-        AND ex.id = p.invoice_id
+    LEFT JOIN expense ex
+      ON p.record_type = 'invoice'
+      AND p.invoice_type = 'expense'
+      AND ex.id = p.invoice_id
 
-      LEFT JOIN payments pay
-        ON p.record_type = 'payment'
-        AND pay.id = p.payment_id
+    LEFT JOIN payments pay
+      ON p.record_type = 'payment'
+      AND pay.id = p.payment_id
 
-      LEFT JOIN funds f
-        ON f.id = pay.fund_id
+    LEFT JOIN funds f
+      ON f.id = pay.fund_id
 
-      WHERE p.party_id = ?
-        AND p.party_type = ?
-        ${dateFilter}
-      ORDER BY p.id DESC
-      ${pagingClause}
-      `
-    )
-    .all(partyId, partyType, ...dateValues, ...pagingValues);
+    WHERE p.party_id = $1
+      AND p.party_type = $2
+      ${dateFilter}
+    ORDER BY p.id DESC
+    ${pagingClause}`,
+    [partyId, partyType, ...dateValues, ...pagingValues],
+  );
 
-  const { total } = db
-    .prepare(
-      `
-      SELECT COUNT(*) AS total
-      FROM party_history p
-      WHERE p.party_id = ?
-        AND p.party_type = ?
-        ${dateFilter}
-      `
-    )
-    .get(partyId, partyType, ...dateValues);
+  const { rows: totalRows } = await queryFn(
+    `SELECT COUNT(*) AS total
+     FROM party_history p
+     WHERE p.party_id = $1
+       AND p.party_type = $2
+       ${dateFilter}`,
+    [partyId, partyType, ...dateValues],
+  );
+  const total = Number(totalRows[0].total);
 
-  const summary = db
-    .prepare(
-      `
-      SELECT
-        COALESCE(SUM(CASE WHEN movement_type = 'increase' THEN amount ELSE 0 END), 0) AS total_increase,
-        COALESCE(SUM(CASE WHEN movement_type = 'decrease' THEN amount ELSE 0 END), 0) AS total_decrease,
-        COALESCE(SUM(CASE WHEN record_type = 'invoice' THEN amount ELSE 0 END), 0) AS total_invoice,
-        COALESCE(SUM(CASE WHEN record_type = 'return' THEN amount ELSE 0 END), 0) AS total_return,
-        COALESCE(SUM(CASE WHEN record_type = 'payment' THEN amount ELSE 0 END), 0) AS total_payment,
-        COALESCE(SUM(CASE WHEN record_type = 'opening_balance' THEN
-          CASE WHEN movement_type = 'increase' THEN amount ELSE -amount END
-        ELSE 0 END), 0) AS opening_balance
-      FROM party_history p
-      WHERE p.party_id = ?
-        AND p.party_type = ?
-        ${dateFilter}
-      `
-    )
-    .get(partyId, partyType, ...dateValues);
+  const { rows: summaryRows } = await queryFn(
+    `SELECT
+      COALESCE(SUM(CASE WHEN movement_type = 'increase' THEN amount ELSE 0 END), 0) AS total_increase,
+      COALESCE(SUM(CASE WHEN movement_type = 'decrease' THEN amount ELSE 0 END), 0) AS total_decrease,
+      COALESCE(SUM(CASE WHEN record_type = 'invoice' THEN amount ELSE 0 END), 0) AS total_invoice,
+      COALESCE(SUM(CASE WHEN record_type = 'return' THEN amount ELSE 0 END), 0) AS total_return,
+      COALESCE(SUM(CASE WHEN record_type = 'payment' THEN amount ELSE 0 END), 0) AS total_payment,
+      COALESCE(SUM(CASE WHEN record_type = 'opening_balance' THEN
+        CASE WHEN movement_type = 'increase' THEN amount ELSE -amount END
+      ELSE 0 END), 0) AS opening_balance
+    FROM party_history p
+    WHERE p.party_id = $1
+      AND p.party_type = $2
+      ${dateFilter}`,
+    [partyId, partyType, ...dateValues],
+  );
+  const summary = summaryRows[0];
 
   return {
     data: rows,
@@ -246,38 +243,47 @@ function fetchPartyHistoryLedger(
 }
 
 export default function registerPartyHistoryIPC() {
-  ipcMain.handle("get-party-history-ledger", (event, params) => {
-    return fetchPartyHistoryLedger(db, params);
-  });
-  ipcMain.handle("get-customer-credit", (event, customerId) => {
-    return getPartyCredit(db, { partyId: customerId, partyType: "customer" });
+  ipcMain.handle("get-party-history-ledger", async (event, params) => {
+    return fetchPartyHistoryLedger(query, params);
   });
 
-  ipcMain.handle("get-supplier-credit", (event, supplierId) => {
-    return getPartyCredit(db, { partyId: supplierId, partyType: "supplier" });
+  ipcMain.handle("get-customer-credit", async (event, customerId) => {
+    return getPartyCredit(query, {
+      partyId: customerId,
+      partyType: "customer",
+    });
   });
 
-  ipcMain.handle("get-party-earliest-date", (event, { partyId, partyType }) => {
-    try {
-      if (!partyId || !partyType) {
-        return { success: true, minDate: null };
-      }
-      const row = db
-        .prepare(
-          `SELECT MIN(date) AS minDate FROM party_history WHERE party_id = ? AND party_type = ?`
-        )
-        .get(partyId, partyType);
-      return { success: true, minDate: row?.minDate || null };
-    } catch (err) {
-      return { success: false, error: err.message || String(err) };
-    }
+  ipcMain.handle("get-supplier-credit", async (event, supplierId) => {
+    return getPartyCredit(query, {
+      partyId: supplierId,
+      partyType: "supplier",
+    });
   });
 
   ipcMain.handle(
-    "apply-invoice-credit",
-    (event, { partyId, partyType, invoiceId, invoiceType, amount }) => {
+    "get-party-earliest-date",
+    async (event, { partyId, partyType }) => {
       try {
-        const applied = applyPartyCredit(db, {
+        if (!partyId || !partyType) {
+          return { success: true, minDate: null };
+        }
+        const { rows } = await query(
+          `SELECT MIN(date) AS "minDate" FROM party_history WHERE party_id = $1 AND party_type = $2`,
+          [partyId, partyType],
+        );
+        return { success: true, minDate: rows[0]?.minDate || null };
+      } catch (err) {
+        return { success: false, error: err.message || String(err) };
+      }
+    },
+  );
+
+  ipcMain.handle(
+    "apply-invoice-credit",
+    async (event, { partyId, partyType, invoiceId, invoiceType, amount }) => {
+      try {
+        const applied = await applyPartyCredit(query, {
           partyId,
           partyType,
           invoiceId,
@@ -288,20 +294,20 @@ export default function registerPartyHistoryIPC() {
       } catch (err) {
         return { success: false, error: err.message || String(err) };
       }
-    }
+    },
   );
 
   ipcMain.handle(
     "export-party-history-excel",
     async (
       event,
-      { partyId, partyType, startDate, endDate, language, partyName }
+      { partyId, partyType, startDate, endDate, language, partyName },
     ) => {
       try {
         const L = getLabels(language);
         const isRtl = language === "ar";
 
-        const { data: rows, summary } = fetchPartyHistoryLedger(db, {
+        const { data: rows, summary } = await fetchPartyHistoryLedger(query, {
           partyId,
           partyType,
           startDate,
@@ -369,20 +375,20 @@ export default function registerPartyHistoryIPC() {
       } catch (err) {
         return { success: false, error: err.message || String(err) };
       }
-    }
+    },
   );
 
   ipcMain.handle(
     "export-party-history-pdf",
     async (
       event,
-      { partyId, partyType, startDate, endDate, language, partyName }
+      { partyId, partyType, startDate, endDate, language, partyName },
     ) => {
       try {
         const L = getLabels(language);
         const isRtl = language === "ar";
 
-        const { data: rows, summary } = fetchPartyHistoryLedger(db, {
+        const { data: rows, summary } = await fetchPartyHistoryLedger(query, {
           partyId,
           partyType,
           startDate,
@@ -402,7 +408,7 @@ export default function registerPartyHistoryIPC() {
             <td>${r.note || ""}</td>
             <td class="right">${Number(r.running_balance).toFixed(2)}</td>
           </tr>
-        `
+        `,
           )
           .join("");
 
@@ -443,7 +449,7 @@ export default function registerPartyHistoryIPC() {
 
         const win = new BrowserWindow({ show: false });
         await win.loadURL(
-          "data:text/html;charset=utf-8," + encodeURIComponent(html)
+          "data:text/html;charset=utf-8," + encodeURIComponent(html),
         );
 
         const pdfBuffer = await win.webContents.printToPDF({
@@ -467,6 +473,6 @@ export default function registerPartyHistoryIPC() {
       } catch (err) {
         return { success: false, error: err.message || String(err) };
       }
-    }
+    },
   );
 }
