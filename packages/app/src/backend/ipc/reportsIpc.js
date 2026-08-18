@@ -1,6 +1,6 @@
 // reportsIpc.js
 import { ipcMain } from "electron";
-import db from "../db";
+import { query } from "../dbConnect.js";
 import {
   getProfitLoss,
   getProfitLossTrend,
@@ -11,11 +11,6 @@ import {
   getSalesTrend,
 } from "../services/reports.service";
 
-// ---------------------------------------------------------------------------
-// getPreviousPeriod — given a start/end date, returns the immediately
-// preceding period of the same length (no gap). Shared by any report that
-// needs period-over-period comparison.
-// ---------------------------------------------------------------------------
 function getPreviousPeriod(startDate, endDate) {
   const start = new Date(startDate);
   const end = new Date(endDate);
@@ -37,11 +32,6 @@ function calculatePercentChange(current, previous) {
   return ((current - previous) / Math.abs(previous)) * 100;
 }
 
-// ---------------------------------------------------------------------------
-// resolveDateRange — shared "default to last 30 days if nothing passed"
-// logic, used by both report handlers so they behave identically when
-// opened with no explicit range.
-// ---------------------------------------------------------------------------
 function resolveDateRange(startDate, endDate) {
   const effectiveEnd = endDate || new Date().toISOString().slice(0, 10);
   const effectiveStart =
@@ -55,11 +45,11 @@ function resolveDateRange(startDate, endDate) {
 export default function registerReportsIPC() {
   ipcMain.handle(
     "get-profit-loss-report",
-    (event, { startDate, endDate } = {}) => {
+    async (event, { startDate, endDate } = {}) => {
       try {
         const { effectiveStart, effectiveEnd } = resolveDateRange(
           startDate,
-          endDate
+          endDate,
         );
 
         if (isNaN(new Date(effectiveStart)) || isNaN(new Date(effectiveEnd))) {
@@ -71,14 +61,14 @@ export default function registerReportsIPC() {
 
         const { prevStart, prevEnd } = getPreviousPeriod(
           effectiveStart,
-          effectiveEnd
+          effectiveEnd,
         );
 
-        const current = getProfitLoss(db, {
+        const current = await getProfitLoss(query, {
           startDate: effectiveStart,
           endDate: effectiveEnd,
         });
-        const previous = getProfitLoss(db, {
+        const previous = await getProfitLoss(query, {
           startDate: prevStart,
           endDate: prevEnd,
         });
@@ -86,28 +76,27 @@ export default function registerReportsIPC() {
         const changePercent = {
           salesTotal: calculatePercentChange(
             current.sales.total,
-            previous.sales.total
+            previous.sales.total,
           ),
           expenseTotal: calculatePercentChange(
             current.expense.total,
-            previous.expense.total
+            previous.expense.total,
           ),
           grossProfit: calculatePercentChange(
             current.profitLoss.grossProfit,
-            previous.profitLoss.grossProfit
+            previous.profitLoss.grossProfit,
           ),
           netProfit: calculatePercentChange(
             current.profitLoss.netProfit,
-            previous.profitLoss.netProfit
+            previous.profitLoss.netProfit,
           ),
         };
 
-        const trend = getProfitLossTrend(db, {
+        const trend = await getProfitLossTrend(query, {
           startDate: effectiveStart,
           endDate: effectiveEnd,
         });
-
-        const expenseBreakdown = getExpenseCategoryBreakdown(db, {
+        const expenseBreakdown = await getExpenseCategoryBreakdown(query, {
           startDate: effectiveStart,
           endDate: effectiveEnd,
         });
@@ -125,18 +114,16 @@ export default function registerReportsIPC() {
         console.error("get-profit-loss-report failed:", err);
         return { success: false, error: "REPORT_GENERATION_FAILED" };
       }
-    }
+    },
   );
 
-  // -------------------------------------------------------------------------
-  // get-sales-report — summary + by-product + by-customer + trend.
   ipcMain.handle(
     "get-sales-report",
-    (event, { startDate, endDate, productLimit, customerLimit } = {}) => {
+    async (event, { startDate, endDate, productLimit, customerLimit } = {}) => {
       try {
         const { effectiveStart, effectiveEnd } = resolveDateRange(
           startDate,
-          endDate
+          endDate,
         );
 
         if (isNaN(new Date(effectiveStart)) || isNaN(new Date(effectiveEnd))) {
@@ -146,26 +133,24 @@ export default function registerReportsIPC() {
           return { success: false, error: "INVALID_DATE_RANGE" };
         }
 
-        const summary = getSalesSummary(db, {
+        const summary = await getSalesSummary(query, {
           startDate: effectiveStart,
           endDate: effectiveEnd,
         });
 
-        const byProduct = getSalesByProduct(db, {
+        const byProduct = await getSalesByProduct(query, {
           startDate: effectiveStart,
           endDate: effectiveEnd,
-          // undefined -> helper's own default (20) kicks in; null passes
-          // through as "no limit" per getSalesByProduct's own convention.
           limit: productLimit,
         });
 
-        const byCustomer = getSalesByCustomer(db, {
+        const byCustomer = await getSalesByCustomer(query, {
           startDate: effectiveStart,
           endDate: effectiveEnd,
           limit: customerLimit,
         });
 
-        const trend = getSalesTrend(db, {
+        const trend = await getSalesTrend(query, {
           startDate: effectiveStart,
           endDate: effectiveEnd,
         });
@@ -181,6 +166,6 @@ export default function registerReportsIPC() {
         console.error("get-sales-report failed:", err);
         return { success: false, error: "REPORT_GENERATION_FAILED" };
       }
-    }
+    },
   );
 }

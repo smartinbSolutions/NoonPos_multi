@@ -1,128 +1,95 @@
-// reports.js
-//
-// Single source of truth for report aggregation logic.
-// Helpers here accept an optional { startDate, endDate } — omitted/undefined
-// means all-time (used by the dashboard), provided means ranged (used by
-// the reports module). Same function, same result shape, different filter.
+// reports.service.js
 
 // ---------------------------------------------------------------------------
-function buildDateRangeFilter(column, startDate, endDate) {
+function buildDateRangeFilter(column, startDate, endDate, startIndex) {
   const conditions = [];
   const params = [];
+  let idx = startIndex;
 
   if (startDate) {
-    conditions.push(`date(${column}) >= date(?)`);
+    conditions.push(`${column}::date >= $${idx}::date`);
     params.push(startDate);
+    idx++;
   }
   if (endDate) {
-    conditions.push(`date(${column}) <= date(?)`);
+    conditions.push(`${column}::date <= $${idx}::date`);
     params.push(endDate);
+    idx++;
   }
 
   return {
     clause: conditions.length ? `AND ${conditions.join(" AND ")}` : "",
     params,
+    nextIndex: idx,
   };
 }
 
 // ---------------------------------------------------------------------------
-export function getProfitLoss(db, { startDate, endDate } = {}) {
-  const invoiceDate = buildDateRangeFilter("si.date", startDate, endDate);
-  const returnDate = buildDateRangeFilter("sr.date", startDate, endDate);
-  const expenseDate = buildDateRangeFilter("date", startDate, endDate);
+export async function getProfitLoss(query, { startDate, endDate } = {}) {
+  const invoiceDate = buildDateRangeFilter("si.date", startDate, endDate, 1);
+  const returnDate = buildDateRangeFilter("sr.date", startDate, endDate, 1);
+  const expenseDate = buildDateRangeFilter("date", startDate, endDate, 1);
 
-  const cogs =
-    db
-      .prepare(
-        `
-          SELECT COALESCE(SUM(sii.quantity * sii.buyingPrice), 0) AS value
-          FROM sales_invoice_items sii
-          JOIN sales_invoices si ON si.id = sii.invoice_id
-          WHERE sii.buyingPrice IS NOT NULL
-          ${invoiceDate.clause}
-        `
-      )
-      .get(...invoiceDate.params)?.value || 0;
+  const { rows: cogsRows } = await query(
+    `
+    SELECT COALESCE(SUM(sii.quantity * sii.buying_price), 0) AS value
+    FROM sales_invoice_items sii
+    JOIN sales_invoices si ON si.id = sii.invoice_id
+    WHERE sii.buying_price IS NOT NULL
+    ${invoiceDate.clause}
+    `,
+    invoiceDate.params,
+  );
+  const cogs = Number(cogsRows[0]?.value || 0);
 
-  const returnedCogs =
-    db
-      .prepare(
-        `
-          SELECT COALESCE(SUM(sri.quantity * sii.buyingPrice), 0) AS value
-          FROM sales_return_items sri
-          JOIN sales_invoice_items sii ON sii.id = sri.sales_invoice_item_id
-          JOIN sales_returns sr ON sr.id = sri.return_id
-          WHERE sii.buyingPrice IS NOT NULL
-          ${returnDate.clause}
-        `
-      )
-      .get(...returnDate.params)?.value || 0;
+  const { rows: returnedCogsRows } = await query(
+    `
+    SELECT COALESCE(SUM(sri.quantity * sii.buying_price), 0) AS value
+    FROM sales_return_items sri
+    JOIN sales_invoice_items sii ON sii.id = sri.sales_invoice_item_id
+    JOIN sales_returns sr ON sr.id = sri.return_id
+    WHERE sii.buying_price IS NOT NULL
+    ${returnDate.clause}
+    `,
+    returnDate.params,
+  );
+  const returnedCogs = Number(returnedCogsRows[0]?.value || 0);
 
-  const salesTotal =
-    db
-      .prepare(
-        `
-          SELECT COALESCE(SUM(net_total), 0) AS value
-          FROM sales_invoices si
-          WHERE 1=1 ${invoiceDate.clause}
-        `
-      )
-      .get(...invoiceDate.params)?.value || 0;
+  const { rows: salesTotalRows } = await query(
+    `SELECT COALESCE(SUM(net_total), 0) AS value FROM sales_invoices si WHERE 1=1 ${invoiceDate.clause}`,
+    invoiceDate.params,
+  );
+  const salesTotal = Number(salesTotalRows[0]?.value || 0);
 
-  const salesReturnTotal =
-    db
-      .prepare(
-        `
-          SELECT COALESCE(SUM(net_total), 0) AS value
-          FROM sales_returns sr
-          WHERE 1=1 ${returnDate.clause}
-        `
-      )
-      .get(...returnDate.params)?.value || 0;
+  const { rows: salesReturnTotalRows } = await query(
+    `SELECT COALESCE(SUM(net_total), 0) AS value FROM sales_returns sr WHERE 1=1 ${returnDate.clause}`,
+    returnDate.params,
+  );
+  const salesReturnTotal = Number(salesReturnTotalRows[0]?.value || 0);
 
-  const salesCount =
-    db
-      .prepare(
-        `
-          SELECT COUNT(*) AS value
-          FROM sales_invoices si
-          WHERE 1=1 ${invoiceDate.clause}
-        `
-      )
-      .get(...invoiceDate.params)?.value || 0;
+  const { rows: salesCountRows } = await query(
+    `SELECT COUNT(*) AS value FROM sales_invoices si WHERE 1=1 ${invoiceDate.clause}`,
+    invoiceDate.params,
+  );
+  const salesCount = Number(salesCountRows[0]?.value || 0);
 
-  const salesReturnCount =
-    db
-      .prepare(
-        `
-          SELECT COUNT(*) AS value
-          FROM sales_returns sr
-          WHERE 1=1 ${returnDate.clause}
-        `
-      )
-      .get(...returnDate.params)?.value || 0;
+  const { rows: salesReturnCountRows } = await query(
+    `SELECT COUNT(*) AS value FROM sales_returns sr WHERE 1=1 ${returnDate.clause}`,
+    returnDate.params,
+  );
+  const salesReturnCount = Number(salesReturnCountRows[0]?.value || 0);
 
-  const expenseTotal =
-    db
-      .prepare(
-        `
-          SELECT COALESCE(SUM(net_total), 0) AS value
-          FROM expense
-          WHERE 1=1 ${expenseDate.clause}
-        `
-      )
-      .get(...expenseDate.params)?.value || 0;
+  const { rows: expenseTotalRows } = await query(
+    `SELECT COALESCE(SUM(net_total), 0) AS value FROM expense WHERE 1=1 ${expenseDate.clause}`,
+    expenseDate.params,
+  );
+  const expenseTotal = Number(expenseTotalRows[0]?.value || 0);
 
-  const expenseCount =
-    db
-      .prepare(
-        `
-          SELECT COUNT(*) AS value
-          FROM expense
-          WHERE 1=1 ${expenseDate.clause}
-        `
-      )
-      .get(...expenseDate.params)?.value || 0;
+  const { rows: expenseCountRows } = await query(
+    `SELECT COUNT(*) AS value FROM expense WHERE 1=1 ${expenseDate.clause}`,
+    expenseDate.params,
+  );
+  const expenseCount = Number(expenseCountRows[0]?.value || 0);
 
   const netCogs = cogs - returnedCogs;
   const netSalesTotal = salesTotal - salesReturnTotal;
@@ -152,38 +119,40 @@ export function getProfitLoss(db, { startDate, endDate } = {}) {
 }
 
 // ---------------------------------------------------------------------------
+// buildBucketCTE — Postgres has no need for SQLite's WITH RECURSIVE trick;
+// generate_series() produces the same bucket set directly.
+// Day buckets are native `date` values; month buckets are 'YYYY-MM' text,
+// matching matchExpr's output type so the join comparison lines up.
+// ---------------------------------------------------------------------------
 function buildBucketCTE(groupBy, startDate, endDate) {
   if (groupBy === "day") {
     return {
       cte: `
-          WITH RECURSIVE buckets(bucket) AS (
-            SELECT date(?)
-            UNION ALL
-            SELECT date(bucket, '+1 day') FROM buckets WHERE bucket < date(?)
-          )
-        `,
+        WITH buckets AS (
+          SELECT generate_series($1::date, $2::date, '1 day'::interval)::date AS bucket
+        )
+      `,
       params: [startDate, endDate],
-      matchExpr: (col) => `date(${col})`,
+      matchExpr: (col) => `${col}::date`,
     };
   }
 
   return {
     cte: `
-        WITH RECURSIVE buckets(bucket) AS (
-          SELECT strftime('%Y-%m', date(?))
-          UNION ALL
-          SELECT strftime('%Y-%m', date(bucket || '-01', '+1 month'))
-          FROM buckets
-          WHERE bucket < strftime('%Y-%m', date(?))
-        )
-      `,
+      WITH buckets AS (
+        SELECT to_char(
+          generate_series(date_trunc('month', $1::date), date_trunc('month', $2::date), '1 month'::interval),
+          'YYYY-MM'
+        ) AS bucket
+      )
+    `,
     params: [startDate, endDate],
-    matchExpr: (col) => `strftime('%Y-%m', ${col})`,
+    matchExpr: (col) => `to_char(${col}::date, 'YYYY-MM')`,
   };
 }
 
 // ---------------------------------------------------------------------------
-export function getProfitLossTrend(db, { startDate, endDate } = {}) {
+export async function getProfitLossTrend(query, { startDate, endDate } = {}) {
   const effectiveEnd = endDate || new Date().toISOString().slice(0, 10);
   const effectiveStart =
     startDate ||
@@ -199,81 +168,77 @@ export function getProfitLossTrend(db, { startDate, endDate } = {}) {
   const { cte, params, matchExpr } = buildBucketCTE(
     groupBy,
     effectiveStart,
-    effectiveEnd
+    effectiveEnd,
   );
 
-  const salesRows = db
-    .prepare(
-      `
-          ${cte}
-          SELECT
-            buckets.bucket AS bucket,
-            COALESCE(SUM(si.net_total), 0) AS sales
-          FROM buckets
-          LEFT JOIN sales_invoices si ON ${matchExpr("si.date")} = buckets.bucket
-          GROUP BY buckets.bucket
-          ORDER BY buckets.bucket
-        `
-    )
-    .all(...params);
+  const { rows: salesRows } = await query(
+    `
+    ${cte}
+    SELECT
+      buckets.bucket AS bucket,
+      COALESCE(SUM(si.net_total), 0) AS sales
+    FROM buckets
+    LEFT JOIN sales_invoices si ON ${matchExpr("si.date")} = buckets.bucket
+    GROUP BY buckets.bucket
+    ORDER BY buckets.bucket
+    `,
+    params,
+  );
 
-  const returnRows = db
-    .prepare(
-      `
-          ${cte}
-          SELECT
-            buckets.bucket AS bucket,
-            COALESCE(SUM(sr.net_total), 0) AS returns
-          FROM buckets
-          LEFT JOIN sales_returns sr ON ${matchExpr("sr.date")} = buckets.bucket
-          GROUP BY buckets.bucket
-          ORDER BY buckets.bucket
-        `
-    )
-    .all(...params);
+  const { rows: returnRows } = await query(
+    `
+    ${cte}
+    SELECT
+      buckets.bucket AS bucket,
+      COALESCE(SUM(sr.net_total), 0) AS returns
+    FROM buckets
+    LEFT JOIN sales_returns sr ON ${matchExpr("sr.date")} = buckets.bucket
+    GROUP BY buckets.bucket
+    ORDER BY buckets.bucket
+    `,
+    params,
+  );
 
-  const expenseRows = db
-    .prepare(
-      `
-          ${cte}
-          SELECT
-            buckets.bucket AS bucket,
-            COALESCE(SUM(e.net_total), 0) AS expense
-          FROM buckets
-          LEFT JOIN expense e ON ${matchExpr("e.date")} = buckets.bucket
-          GROUP BY buckets.bucket
-          ORDER BY buckets.bucket
-        `
-    )
-    .all(...params);
+  const { rows: expenseRows } = await query(
+    `
+    ${cte}
+    SELECT
+      buckets.bucket AS bucket,
+      COALESCE(SUM(e.net_total), 0) AS expense
+    FROM buckets
+    LEFT JOIN expense e ON ${matchExpr("e.date")} = buckets.bucket
+    GROUP BY buckets.bucket
+    ORDER BY buckets.bucket
+    `,
+    params,
+  );
 
-  const cogsRows = db
-    .prepare(
-      `
-          ${cte}
-          SELECT
-            buckets.bucket AS bucket,
-            COALESCE(SUM(sii.quantity * sii.buyingPrice), 0) AS cogs
-          FROM buckets
-          LEFT JOIN sales_invoices si ON ${matchExpr("si.date")} = buckets.bucket
-          LEFT JOIN sales_invoice_items sii
-            ON sii.invoice_id = si.id AND sii.buyingPrice IS NOT NULL
-          GROUP BY buckets.bucket
-          ORDER BY buckets.bucket
-        `
-    )
-    .all(...params);
+  const { rows: cogsRows } = await query(
+    `
+    ${cte}
+    SELECT
+      buckets.bucket AS bucket,
+      COALESCE(SUM(sii.quantity * sii.buying_price), 0) AS cogs
+    FROM buckets
+    LEFT JOIN sales_invoices si ON ${matchExpr("si.date")} = buckets.bucket
+    LEFT JOIN sales_invoice_items sii
+      ON sii.invoice_id = si.id AND sii.buying_price IS NOT NULL
+    GROUP BY buckets.bucket
+    ORDER BY buckets.bucket
+    `,
+    params,
+  );
 
-  // All four queries share the exact same bucket set (from the same CTE),
-  // so merging by index-aligned bucket key is safe.
-  const returnsByBucket = new Map(returnRows.map((r) => [r.bucket, r.returns]));
+  const returnsByBucket = new Map(
+    returnRows.map((r) => [r.bucket, Number(r.returns)]),
+  );
   const expenseByBucket = new Map(
-    expenseRows.map((r) => [r.bucket, r.expense])
+    expenseRows.map((r) => [r.bucket, Number(r.expense)]),
   );
-  const cogsByBucket = new Map(cogsRows.map((r) => [r.bucket, r.cogs]));
+  const cogsByBucket = new Map(cogsRows.map((r) => [r.bucket, Number(r.cogs)]));
 
   const series = salesRows.map((row) => {
-    const sales = row.sales;
+    const sales = Number(row.sales);
     const returns = returnsByBucket.get(row.bucket) || 0;
     const expense = expenseByBucket.get(row.bucket) || 0;
     const cogs = cogsByBucket.get(row.bucket) || 0;
@@ -298,86 +263,66 @@ export function getProfitLossTrend(db, { startDate, endDate } = {}) {
 }
 
 // ---------------------------------------------------------------------------
-export function getExpenseCategoryBreakdown(db, { startDate, endDate } = {}) {
-  const expenseDate = buildDateRangeFilter("e.date", startDate, endDate);
+export async function getExpenseCategoryBreakdown(
+  query,
+  { startDate, endDate } = {},
+) {
+  const expenseDate = buildDateRangeFilter("e.date", startDate, endDate, 1);
 
-  return db
-    .prepare(
-      `
-          SELECT
-            ec.id AS category_id,
-            COALESCE(ec.name, 'Unknown') AS name,
-            COALESCE(SUM(ei.price), 0) AS total_spent,
-            COUNT(ei.id) AS items_count
-          FROM expense_items ei
-          JOIN expense e ON e.id = ei.expense_id
-          LEFT JOIN expence_category ec ON ec.id = ei.category_id
-          WHERE 1=1 ${expenseDate.clause}
-          GROUP BY ei.category_id
-          ORDER BY total_spent DESC
-        `
-    )
-    .all(...expenseDate.params);
+  const { rows } = await query(
+    `
+    SELECT
+      ec.id AS category_id,
+      COALESCE(ec.name, 'Unknown') AS name,
+      COALESCE(SUM(ei.price), 0) AS total_spent,
+      COUNT(ei.id) AS items_count
+    FROM expense_items ei
+    JOIN expense e ON e.id = ei.expense_id
+    LEFT JOIN expence_category ec ON ec.id = ei.category_id
+    WHERE 1=1 ${expenseDate.clause}
+    GROUP BY ec.id, ei.category_id
+    ORDER BY total_spent DESC
+    `,
+    expenseDate.params,
+  );
+
+  return rows.map((row) => ({
+    ...row,
+    total_spent: Number(row.total_spent),
+    items_count: Number(row.items_count),
+  }));
 }
 
 // ---------------------------------------------------------------------------
-// getSalesSummary — headline totals for the sales report: gross, returns,
-// net, invoice count, and average invoice value. Same shape family as
-// getProfitLoss's `sales` block, but standalone since the sales report
-// doesn't need cogs/expense/profit — just the sales side.
-// ---------------------------------------------------------------------------
-export function getSalesSummary(db, { startDate, endDate } = {}) {
-  const invoiceDate = buildDateRangeFilter("date", startDate, endDate);
-  const returnDate = buildDateRangeFilter("date", startDate, endDate);
+export async function getSalesSummary(query, { startDate, endDate } = {}) {
+  const invoiceDate = buildDateRangeFilter("date", startDate, endDate, 1);
+  const returnDate = buildDateRangeFilter("date", startDate, endDate, 1);
 
-  const grossSales =
-    db
-      .prepare(
-        `
-            SELECT COALESCE(SUM(net_total), 0) AS value
-            FROM sales_invoices
-            WHERE 1=1 ${invoiceDate.clause}
-          `
-      )
-      .get(...invoiceDate.params)?.value || 0;
+  const { rows: grossSalesRows } = await query(
+    `SELECT COALESCE(SUM(net_total), 0) AS value FROM sales_invoices WHERE 1=1 ${invoiceDate.clause}`,
+    invoiceDate.params,
+  );
+  const grossSales = Number(grossSalesRows[0]?.value || 0);
 
-  const invoiceCount =
-    db
-      .prepare(
-        `
-            SELECT COUNT(*) AS value
-            FROM sales_invoices
-            WHERE 1=1 ${invoiceDate.clause}
-          `
-      )
-      .get(...invoiceDate.params)?.value || 0;
+  const { rows: invoiceCountRows } = await query(
+    `SELECT COUNT(*) AS value FROM sales_invoices WHERE 1=1 ${invoiceDate.clause}`,
+    invoiceDate.params,
+  );
+  const invoiceCount = Number(invoiceCountRows[0]?.value || 0);
 
-  const returnsTotal =
-    db
-      .prepare(
-        `
-            SELECT COALESCE(SUM(net_total), 0) AS value
-            FROM sales_returns
-            WHERE 1=1 ${returnDate.clause}
-          `
-      )
-      .get(...returnDate.params)?.value || 0;
+  const { rows: returnsTotalRows } = await query(
+    `SELECT COALESCE(SUM(net_total), 0) AS value FROM sales_returns WHERE 1=1 ${returnDate.clause}`,
+    returnDate.params,
+  );
+  const returnsTotal = Number(returnsTotalRows[0]?.value || 0);
 
-  const returnsCount =
-    db
-      .prepare(
-        `
-            SELECT COUNT(*) AS value
-            FROM sales_returns
-            WHERE 1=1 ${returnDate.clause}
-          `
-      )
-      .get(...returnDate.params)?.value || 0;
+  const { rows: returnsCountRows } = await query(
+    `SELECT COUNT(*) AS value FROM sales_returns WHERE 1=1 ${returnDate.clause}`,
+    returnDate.params,
+  );
+  const returnsCount = Number(returnsCountRows[0]?.value || 0);
 
   const netSales = grossSales - returnsTotal;
-  // Average invoice value uses gross sales / invoice count — not net —
-  // since an invoice's own value is fixed at creation, returns are a
-  // separate later event and shouldn't retroactively shrink "average sale".
   const averageInvoiceValue = invoiceCount > 0 ? grossSales / invoiceCount : 0;
 
   return {
@@ -391,86 +336,86 @@ export function getSalesSummary(db, { startDate, endDate } = {}) {
 }
 
 // ---------------------------------------------------------------------------
-// getSalesByProduct — per-product quantity, revenue, cost, and margin.
-// `limit` defaults to 20 (top N by revenue) — pass limit: null explicitly to
-// get every product with no cap, which is how the "Show all" UI action
-// re-queries this same function.
-// ---------------------------------------------------------------------------
-export function getSalesByProduct(db, { startDate, endDate, limit = 20 } = {}) {
-  const invoiceDate = buildDateRangeFilter("si.date", startDate, endDate);
-  // LIMIT -1 in SQLite means "no limit" — used when the caller passes
-  // limit: null/undefined for the "show everything" case.
-  const effectiveLimit = limit === null || limit === undefined ? -1 : limit;
-
-  return (
-    db
-      .prepare(
-        `
-          SELECT
-            sii.product_id,
-            COALESCE(p.name, sii.product_name, 'Unknown') AS name,
-            COALESCE(SUM(sii.quantity), 0) AS quantity,
-            COALESCE(SUM(sii.total), 0) AS revenue,
-            COALESCE(SUM(sii.quantity * sii.buyingPrice), 0) AS cost,
-            COALESCE(SUM(sii.total), 0) - COALESCE(SUM(sii.quantity * sii.buyingPrice), 0) AS margin
-          FROM sales_invoice_items sii
-          JOIN sales_invoices si ON si.id = sii.invoice_id
-          LEFT JOIN products p ON p.id = sii.product_id
-          WHERE 1=1 ${invoiceDate.clause}
-          GROUP BY sii.product_id
-          ORDER BY revenue DESC
-          LIMIT ?
-        `
-      )
-      .all(...invoiceDate.params, effectiveLimit)
-      // marginPercent computed in JS rather than SQL — avoids a division-by-zero
-      // CASE expression in every row for a product with zero revenue (shouldn't
-      // happen given the GROUP BY, but cheap insurance).
-      .map((row) => ({
-        ...row,
-        marginPercent: row.revenue > 0 ? (row.margin / row.revenue) * 100 : 0,
-      }))
-  );
-}
-
-// ---------------------------------------------------------------------------
-// getSalesByCustomer — per-customer invoice count, total purchased, and
-// average order value. Same limit/null-for-all convention as getSalesByProduct.
-// ---------------------------------------------------------------------------
-export function getSalesByCustomer(
-  db,
-  { startDate, endDate, limit = 20 } = {}
+export async function getSalesByProduct(
+  query,
+  { startDate, endDate, limit = 20 } = {},
 ) {
-  const invoiceDate = buildDateRangeFilter("date", startDate, endDate);
-  const effectiveLimit = limit === null || limit === undefined ? -1 : limit;
+  const invoiceDate = buildDateRangeFilter("si.date", startDate, endDate, 1);
+  // Postgres: LIMIT NULL means "no limit" (LIMIT -1 is SQLite-only syntax).
+  const effectiveLimit = limit === null || limit === undefined ? null : limit;
+  const limitIndex = invoiceDate.nextIndex;
 
-  return db
-    .prepare(
-      `
-          SELECT
-            si.customer_id,
-            COALESCE(c.name, 'Unknown') AS name,
-            COUNT(*) AS invoiceCount,
-            COALESCE(SUM(si.net_total), 0) AS totalPurchased,
-            COALESCE(SUM(si.net_total), 0) / COUNT(*) AS averageOrderValue
-          FROM sales_invoices si
-          LEFT JOIN customers c ON c.id = si.customer_id
-          WHERE 1=1 ${invoiceDate.clause}
-          GROUP BY si.customer_id
-          ORDER BY totalPurchased DESC
-          LIMIT ?
-        `
-    )
-    .all(...invoiceDate.params, effectiveLimit);
+  const { rows } = await query(
+    `
+    SELECT
+      sii.product_id,
+      COALESCE(p.name, sii.product_name, 'Unknown') AS name,
+      COALESCE(SUM(sii.quantity), 0) AS quantity,
+      COALESCE(SUM(sii.total), 0) AS revenue,
+      COALESCE(SUM(sii.quantity * sii.buying_price), 0) AS cost,
+      COALESCE(SUM(sii.total), 0) - COALESCE(SUM(sii.quantity * sii.buying_price), 0) AS margin
+    FROM sales_invoice_items sii
+    JOIN sales_invoices si ON si.id = sii.invoice_id
+    LEFT JOIN products p ON p.id = sii.product_id
+    WHERE 1=1 ${invoiceDate.clause}
+    GROUP BY sii.product_id, p.name
+    ORDER BY revenue DESC
+    LIMIT $${limitIndex}
+    `,
+    [...invoiceDate.params, effectiveLimit],
+  );
+
+  return rows.map((row) => {
+    const revenue = Number(row.revenue);
+    const margin = Number(row.margin);
+    return {
+      ...row,
+      quantity: Number(row.quantity),
+      revenue,
+      cost: Number(row.cost),
+      margin,
+      marginPercent: revenue > 0 ? (margin / revenue) * 100 : 0,
+    };
+  });
 }
 
 // ---------------------------------------------------------------------------
-// getSalesTrend — sales revenue per bucket (day/month), zero-filled the same
-// way as getProfitLossTrend. Kept single-purpose (sales only, no
-// expense/cogs series) since this report's trend question is just
-// "how did sales move day to day", not the fuller P&L picture.
+export async function getSalesByCustomer(
+  query,
+  { startDate, endDate, limit = 20 } = {},
+) {
+  const invoiceDate = buildDateRangeFilter("date", startDate, endDate, 1);
+  const effectiveLimit = limit === null || limit === undefined ? null : limit;
+  const limitIndex = invoiceDate.nextIndex;
+
+  const { rows } = await query(
+    `
+    SELECT
+      si.customer_id,
+      COALESCE(c.name, 'Unknown') AS name,
+      COUNT(*) AS "invoiceCount",
+      COALESCE(SUM(si.net_total), 0) AS "totalPurchased",
+      COALESCE(SUM(si.net_total), 0) / COUNT(*) AS "averageOrderValue"
+    FROM sales_invoices si
+    LEFT JOIN customers c ON c.id = si.customer_id
+    WHERE 1=1 ${invoiceDate.clause}
+    GROUP BY si.customer_id, c.name
+    ORDER BY "totalPurchased" DESC
+    LIMIT $${limitIndex}
+    `,
+    [...invoiceDate.params, effectiveLimit],
+  );
+
+  return rows.map((row) => ({
+    ...row,
+    invoiceCount: Number(row.invoiceCount),
+    totalPurchased: Number(row.totalPurchased),
+    averageOrderValue: Number(row.averageOrderValue),
+  }));
+}
+
 // ---------------------------------------------------------------------------
-export function getSalesTrend(db, { startDate, endDate } = {}) {
+export async function getSalesTrend(query, { startDate, endDate } = {}) {
   const effectiveEnd = endDate || new Date().toISOString().slice(0, 10);
   const effectiveStart =
     startDate ||
@@ -486,23 +431,25 @@ export function getSalesTrend(db, { startDate, endDate } = {}) {
   const { cte, params, matchExpr } = buildBucketCTE(
     groupBy,
     effectiveStart,
-    effectiveEnd
+    effectiveEnd,
   );
 
-  const rows = db
-    .prepare(
-      `
-          ${cte}
-          SELECT
-            buckets.bucket AS bucket,
-            COALESCE(SUM(si.net_total), 0) AS sales
-          FROM buckets
-          LEFT JOIN sales_invoices si ON ${matchExpr("si.date")} = buckets.bucket
-          GROUP BY buckets.bucket
-          ORDER BY buckets.bucket
-        `
-    )
-    .all(...params);
+  const { rows } = await query(
+    `
+    ${cte}
+    SELECT
+      buckets.bucket AS bucket,
+      COALESCE(SUM(si.net_total), 0) AS sales
+    FROM buckets
+    LEFT JOIN sales_invoices si ON ${matchExpr("si.date")} = buckets.bucket
+    GROUP BY buckets.bucket
+    ORDER BY buckets.bucket
+    `,
+    params,
+  );
 
-  return { groupBy, series: rows };
+  return {
+    groupBy,
+    series: rows.map((r) => ({ ...r, sales: Number(r.sales) })),
+  };
 }
