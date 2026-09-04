@@ -114,25 +114,6 @@ contextBridge.exposeInMainWorld("api", {
     ipcRenderer.invoke("export-products-for-update", data),
   importProductsUpdate: () => ipcRenderer.invoke("import-products-update"),
 
-  /* ================= PURCHASE INVOICE ================= */
-  getPurchaseInvoices: (params) =>
-    ipcRenderer.invoke("get-purchase-invoices", params),
-  getPurchaseInvoiceById: (id) =>
-    ipcRenderer.invoke("get-purchase-invoice", id),
-  createPurchaseInvoice: (data) =>
-    ipcRenderer.invoke("create-purchase-invoice", data),
-  updatePurchaseInvoice: (data) =>
-    ipcRenderer.invoke("update-purchase-invoice", data),
-  deletePurchaseInvoice: (id) =>
-    ipcRenderer.invoke("delete-purchase-invoice", id),
-
-  /* ================= PURCHASE RETURN ================= */
-  getPurchaseReturns: (params) =>
-    ipcRenderer.invoke("get-purchase-returns", params),
-  getPurchaseReturnById: (id) => ipcRenderer.invoke("get-purchase-return", id),
-  createPurchaseReturn: (data) =>
-    ipcRenderer.invoke("create-purchase-return", data),
-
   /* ================= BOM ================= */
   createBom: (data) => ipcRenderer.invoke("create-bom", data),
   getBoms: (params) => ipcRenderer.invoke("get-boms", params),
@@ -151,6 +132,25 @@ contextBridge.exposeInMainWorld("api", {
     ipcRenderer.invoke("update-manufacturing-order", data),
   deleteManufacturingOrder: (id) =>
     ipcRenderer.invoke("delete-manufacturing-order", id),
+
+  /* ================= PURCHASE INVOICE ================= */
+  getPurchaseInvoices: (params) =>
+    ipcRenderer.invoke("get-purchase-invoices", params),
+  getPurchaseInvoiceById: (id) =>
+    ipcRenderer.invoke("get-purchase-invoice", id),
+  createPurchaseInvoice: (data) =>
+    ipcRenderer.invoke("create-purchase-invoice", data),
+  updatePurchaseInvoice: (data) =>
+    ipcRenderer.invoke("update-purchase-invoice", data),
+  deletePurchaseInvoice: (id) =>
+    ipcRenderer.invoke("delete-purchase-invoice", id),
+
+  /* ================= PURCHASE RETURN ================= */
+  getPurchaseReturns: (params) =>
+    ipcRenderer.invoke("get-purchase-returns", params),
+  getPurchaseReturnById: (id) => ipcRenderer.invoke("get-purchase-return", id),
+  createPurchaseReturn: (data) =>
+    ipcRenderer.invoke("create-purchase-return", data),
 
   /* ================= SALES ================= */
   getSalesInvoices: (params) =>
@@ -260,6 +260,42 @@ contextBridge.exposeInMainWorld("api", {
   isCustomerDisplayOpen: () => ipcRenderer.invoke("customer-display:is-open"),
   pushCartToCustomerDisplay: (cartPayload) =>
     ipcRenderer.send("customer-display:push-cart", cartPayload),
+  /* ================= PRINTER SETTINGS ================= */
+  listPrinters: () => ipcRenderer.invoke("list-printers"),
+  getPrinterSettings: () => ipcRenderer.invoke("get-printer-settings"),
+  savePrinterSettings: (data) =>
+    ipcRenderer.invoke("save-printer-settings", data),
+  deletePrinterSettings: (id) =>
+    ipcRenderer.invoke("delete-printer-settings", id),
+  testPrint: (deviceName) => ipcRenderer.invoke("test-print", { deviceName }),
+  getAllPrinterSettings: (data) =>
+    ipcRenderer.invoke("get-all-printer-settings", data),
+
+  /* ================= BACKUP ================= */
+  getBackupSettings: () => ipcRenderer.invoke("backup-get-settings"),
+  listBackups: () => ipcRenderer.invoke("backup-list"),
+  chooseRestoreFile: () => ipcRenderer.invoke("backup-choose-restore-file"),
+  updateBackupSettings: (data) =>
+    ipcRenderer.invoke("backup-update-settings", data),
+  chooseBackupFolder: () => ipcRenderer.invoke("backup-choose-folder"),
+  createBackup: (targetFolder) =>
+    ipcRenderer.invoke("backup-create", { targetFolder }),
+  restoreBackup: (data) => ipcRenderer.invoke("backup-restore", data),
+  uploadCloudBackup: () => ipcRenderer.invoke("backup-cloud-upload"),
+  listCloudBackups: () => ipcRenderer.invoke("backup-cloud-list"),
+  downloadCloudBackup: (backupId) =>
+    ipcRenderer.invoke("backup-cloud-download", backupId),
+  /* ================= TAGS ================= */
+  createTag: (data) => ipcRenderer.invoke("create-tag", data),
+  listTags: (scope) => ipcRenderer.invoke("list-tags", { scope }),
+  updateTag: (data) => ipcRenderer.invoke("update-tag", data),
+  deleteTag: (id, force) => ipcRenderer.invoke("delete-tag", { id, force }),
+  getEntityTags: (entityType, entityId) =>
+    ipcRenderer.invoke("get-entity-tags", { entityType, entityId }),
+  setEntityTags: (entityType, entityId, tagIds) =>
+    ipcRenderer.invoke("set-entity-tags", { entityType, entityId, tagIds }),
+  getEntitiesTags: (entityType, entityIds) =>
+    ipcRenderer.invoke("get-entities-tags", { entityType, entityIds }),
   /* ================= REPORTS ================= */
   getProfitLossReport: (params) =>
     ipcRenderer.invoke("get-profit-loss-report", params),

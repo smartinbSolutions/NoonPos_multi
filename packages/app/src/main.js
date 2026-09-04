@@ -10,6 +10,8 @@ import activateLicense from "./main/license/activateLicense";
 import verifyLicenseFile from "./main/license/verifyLicenseFile";
 import { hasDbConfig } from "./main/db/dbConnectionConfig";
 import registerDbSetupIPC from "./main/db/registerDbSetupIPC";
+import { query } from "./backend/dbConnect";
+import { registerThisTerminal } from "./backend/services/terminals.service";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -76,7 +78,7 @@ export function loadRendererRoute(window, routePath) {
 
   window.loadFile(
     path.join(__dirname, `../renderer/${rendererName}/index.html`),
-    { hash: routePath }
+    { hash: routePath },
   );
 }
 
@@ -126,6 +128,7 @@ app.whenReady().then(async () => {
 
   try {
     registerAllIPC();
+    await registerThisTerminal(query);
   } catch (error) {
     console.error("Failed to register application IPC handlers", error);
   }
@@ -148,7 +151,7 @@ app.whenReady().then(async () => {
         return;
       }
       callback(portList[0].portId);
-    }
+    },
   );
 
   const licenseStatus = await verifyLicenseFile();

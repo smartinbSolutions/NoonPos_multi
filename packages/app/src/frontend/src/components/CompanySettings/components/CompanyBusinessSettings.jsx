@@ -10,12 +10,15 @@ import {
   CheckCircle2,
   Settings2,
   DatabaseBackup,
+  MonitorSmartphone,
 } from "lucide-react";
 import useUpdateCompanySettings from "../hooks/useUpdateCompanySettings";
 import { useTranslation } from "react-i18next";
 import { ToastContainer } from "react-toastify";
 import PrinterSettingsModal from "./PrinterSettingsModal";
 import BackupSettingsModal from "./BackupSettingsModal";
+import PrinterOverviewModal from "./PrinterOverviewModal";
+import useAuth from "../../Auth/";
 
 function Toggle({ checked, onChange }) {
   return (
@@ -40,6 +43,8 @@ function Toggle({ checked, onChange }) {
 
 export default function CompanyBusinessSettings() {
   const { t } = useTranslation();
+  const { user } = useAuth();
+  const isAdmin = user?.role === "admin";
   const {
     handleSave,
     toggleAllowNegativeStock,
@@ -56,6 +61,7 @@ export default function CompanyBusinessSettings() {
   const [printerModalOpen, setPrinterModalOpen] = useState(false);
   const [defaultPrinterName, setDefaultPrinterName] = useState(null);
   const [backupModalOpen, setBackupModalOpen] = useState(false);
+  const [printerOverviewOpen, setPrinterOverviewOpen] = useState(false);
 
   // Lightweight standalone check — deliberately NOT using the full
   // usePrinterSettings hook here, since this row only needs to know
@@ -322,6 +328,39 @@ export default function CompanyBusinessSettings() {
               </button>
             </div>
 
+            {/* Printer overview — admin-only, across every terminal */}
+            {isAdmin && (
+              <div className="flex items-center justify-between gap-4 rounded-2xl border border-gray-100 bg-gray-50/60 p-4">
+                <div className="flex items-start gap-3">
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-sky-50 text-sky-600">
+                    <MonitorSmartphone size={17} />
+                  </span>
+                  <div>
+                    <p className="text-sm font-bold text-gray-800">
+                      {t(
+                        "screens.printerOverview.rowTitle",
+                        "Printer overview",
+                      )}
+                    </p>
+                    <p className="mt-0.5 text-xs text-gray-500">
+                      {t(
+                        "screens.printerOverview.rowHint",
+                        "See every terminal's printer setup in one place.",
+                      )}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setPrinterOverviewOpen(true)}
+                  className="flex items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-bold text-gray-700 transition hover:bg-gray-50"
+                >
+                  <Settings2 size={14} />
+                  {t("screens.printers.manage", "Manage")}
+                </button>
+              </div>
+            )}
+
             {/* Database backups — trigger row, opens BackupSettingsModal */}
             <div className="flex items-center justify-between gap-4 rounded-2xl border border-gray-100 bg-gray-50/60 p-4">
               <div className="flex items-start gap-3">
@@ -372,6 +411,12 @@ export default function CompanyBusinessSettings() {
       <BackupSettingsModal
         isOpen={backupModalOpen}
         onClose={() => setBackupModalOpen(false)}
+      />
+
+      <PrinterOverviewModal
+        isOpen={printerOverviewOpen}
+        onClose={() => setPrinterOverviewOpen(false)}
+        administratorId={user?.id}
       />
 
       <ToastContainer />

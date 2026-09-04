@@ -123,3 +123,34 @@ CREATE TABLE IF NOT EXISTS taggables (
 
 CREATE INDEX IF NOT EXISTS idx_taggables_tag ON taggables(tag_id);
 CREATE INDEX IF NOT EXISTS idx_taggables_entity ON taggables(entity_type, entity_id);
+
+-- Printer settings, scoped per terminal via device_id (getDeviceHash(),
+-- the same stable per-machine hash already used for license binding).
+-- terminal_name (os.hostname()) is stored purely for display, refreshed
+-- on every save. Every terminal only ever sees/manages its own rows, even
+-- though the table lives in the one shared database every terminal
+-- connects to.
+
+CREATE TABLE IF NOT EXISTS printer_settings (
+  id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  device_id TEXT NOT NULL,
+  terminal_name TEXT,
+  device_name TEXT NOT NULL,
+  label TEXT,
+  paper_size TEXT NOT NULL DEFAULT '80mm' CHECK (paper_size IN ('58mm', '80mm', 'a4')),
+  backend TEXT NOT NULL DEFAULT 'electron' CHECK (backend IN ('electron', 'raw_escpos')),
+  has_cutter BOOLEAN NOT NULL DEFAULT TRUE,
+  is_default BOOLEAN NOT NULL DEFAULT FALSE,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now(),
+  UNIQUE(device_id, device_name)
+);
+
+CREATE TABLE IF NOT EXISTS terminals (
+  device_id TEXT PRIMARY KEY,
+  terminal_name TEXT,
+  first_seen_at TIMESTAMPTZ DEFAULT now(),
+  last_seen_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_printer_settings_device ON printer_settings(device_id);
