@@ -36,21 +36,25 @@ export default function registerTaxesIPC() {
     if (category && ["product", "invoice", "both"].includes(category)) {
       // e.g. product dropdown asks for taxes usable on a product: 'product' or 'both'
       const { rows } = await query(
-        "SELECT * FROM taxes WHERE category = $1 OR category = 'both'",
+        "SELECT id, name, rate::float AS rate, category FROM taxes WHERE category = $1 OR category = 'both'",
         [category],
       );
       return rows;
     }
 
-    const { rows } = await query("SELECT * FROM taxes");
+    const { rows } = await query(
+      "SELECT id, name, rate::float AS rate, category FROM taxes",
+    );
     return rows;
   });
 
   ipcMain.handle("get-tax", async (event, id) => {
-    const { rows } = await query("SELECT * FROM taxes WHERE id = $1", [id]);
+    const { rows } = await query(
+      "SELECT id, name, rate::float AS rate, category FROM taxes WHERE id = $1",
+      [id],
+    );
     return rows[0];
   });
-
   ipcMain.handle("update-tax", async (event, data) => {
     if (!data.name || data.rate < 0) {
       return { success: false, error: "ERROR ENTER DATA" };

@@ -75,7 +75,7 @@ const useCurrency = () => {
       console.error("Failed to load product catalog:", err);
       setUnavailableHandlers([]);
       setError(
-        err?.message || t("errors.createFailed", { field: t("ui.currency") })
+        err?.message || t("errors.createFailed", { field: t("ui.currency") }),
       );
     } finally {
       setLoading(false);
@@ -144,13 +144,13 @@ const useCurrency = () => {
       console.error("Failed to create Currency:", err);
       if (err.message === "CURRENCY_ALREADY_EXISTS") {
         setActionError(
-          t("errors.currencyAlreadyExists", { field: t("ui.currency") })
+          t("errors.currencyAlreadyExists", { field: t("ui.currency") }),
         );
       } else if (err.message === "RATE_RESERVED_FOR_PRIMARY") {
         setActionError(t("errors.rateReservedForPrimary"));
       } else {
         setActionError(
-          err?.message || t("errors.createFailed", { field: t("ui.currency") })
+          err?.message || t("errors.createFailed", { field: t("ui.currency") }),
         );
       }
       return false;
@@ -166,7 +166,7 @@ const useCurrency = () => {
       console.error("Failed to update Currency:", err);
       if (err.message === "CURRENCY_ALREADY_EXISTS") {
         setActionError(
-          t("errors.currencyAlreadyExists", { field: t("ui.currency") })
+          t("errors.currencyAlreadyExists", { field: t("ui.currency") }),
         );
       } else if (err.message === "PRIMARY_RATE_MUST_BE_ONE") {
         setActionError(t("errors.primaryRateMustBeOne"));
@@ -174,7 +174,7 @@ const useCurrency = () => {
         setActionError(t("errors.rateReservedForPrimary"));
       } else {
         setActionError(
-          err?.message || t("errors.updateFailed", { field: t("ui.currency") })
+          err?.message || t("errors.updateFailed", { field: t("ui.currency") }),
         );
       }
       return false;
@@ -189,7 +189,7 @@ const useCurrency = () => {
       console.error("Failed to delete Currency:", err);
       if (err.message === "CANNOT_DELETE_PRIMARY") {
         setActionError(
-          t("errors.cannotDeletePrimaryCurrency", { field: t("ui.currency") })
+          t("errors.cannotDeletePrimaryCurrency", { field: t("ui.currency") }),
         );
       } else if (err.message === "CURRENCY_IN_USE") {
         setActionError(t("errors.currencyInUse", { field: t("ui.currency") }));

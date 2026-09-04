@@ -175,7 +175,7 @@ export async function getProfitLossTrend(query, { startDate, endDate } = {}) {
     `
     ${cte}
     SELECT
-      buckets.bucket AS bucket,
+      buckets.bucket::text AS bucket,
       COALESCE(SUM(si.net_total), 0) AS sales
     FROM buckets
     LEFT JOIN sales_invoices si ON ${matchExpr("si.date")} = buckets.bucket
@@ -189,7 +189,7 @@ export async function getProfitLossTrend(query, { startDate, endDate } = {}) {
     `
     ${cte}
     SELECT
-      buckets.bucket AS bucket,
+      buckets.bucket::text AS bucket,
       COALESCE(SUM(sr.net_total), 0) AS returns
     FROM buckets
     LEFT JOIN sales_returns sr ON ${matchExpr("sr.date")} = buckets.bucket
@@ -203,7 +203,7 @@ export async function getProfitLossTrend(query, { startDate, endDate } = {}) {
     `
     ${cte}
     SELECT
-      buckets.bucket AS bucket,
+      buckets.bucket::text AS bucket,
       COALESCE(SUM(e.net_total), 0) AS expense
     FROM buckets
     LEFT JOIN expense e ON ${matchExpr("e.date")} = buckets.bucket
@@ -217,7 +217,7 @@ export async function getProfitLossTrend(query, { startDate, endDate } = {}) {
     `
     ${cte}
     SELECT
-      buckets.bucket AS bucket,
+      buckets.bucket::text AS bucket,
       COALESCE(SUM(sii.quantity * sii.buying_price), 0) AS cogs
     FROM buckets
     LEFT JOIN sales_invoices si ON ${matchExpr("si.date")} = buckets.bucket
@@ -278,7 +278,7 @@ export async function getExpenseCategoryBreakdown(
       COUNT(ei.id) AS items_count
     FROM expense_items ei
     JOIN expense e ON e.id = ei.expense_id
-    LEFT JOIN expence_category ec ON ec.id = ei.category_id
+    LEFT JOIN expense_category ec ON ec.id = ei.category_id
     WHERE 1=1 ${expenseDate.clause}
     GROUP BY ec.id, ei.category_id
     ORDER BY total_spent DESC
@@ -438,7 +438,7 @@ export async function getSalesTrend(query, { startDate, endDate } = {}) {
     `
     ${cte}
     SELECT
-      buckets.bucket AS bucket,
+      buckets.bucket::text AS bucket,
       COALESCE(SUM(si.net_total), 0) AS sales
     FROM buckets
     LEFT JOIN sales_invoices si ON ${matchExpr("si.date")} = buckets.bucket

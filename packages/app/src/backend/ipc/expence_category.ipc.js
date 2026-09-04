@@ -50,11 +50,11 @@ export default function registerExpenceCategoryIPC() {
         `SELECT
           ec.id,
           ec.name,
-          ec.latin_name,
-          ec.created_at,
-          COALESCE(filtered.total_spent, 0) AS total_spent,
-          COALESCE(filtered.items_count, 0) AS items_count,
-          COUNT(ei.id) AS total_items_count
+          ec.latin_name AS "latinName",
+          ec.created_at::text AS created_at,
+          COALESCE(filtered.total_spent, 0)::float AS total_spent,
+          COALESCE(filtered.items_count, 0)::int AS items_count,
+          COUNT(ei.id)::int AS total_items_count
         FROM expense_category ec
         LEFT JOIN expense_items ei ON ei.category_id = ec.id
         LEFT JOIN (
@@ -118,14 +118,14 @@ export default function registerExpenceCategoryIPC() {
       `SELECT
         ei.id,
         ei.expense_id,
-        ei.price,
-        ei.total,
-        ei.discount,
-        ei.discount_rate,
-        ei.tax_rate,
-        ei.tax_value,
+        ei.price::float AS price,
+        ei.total::float AS total,
+        ei.discount::float AS discount,
+        ei.discount_rate::float AS discount_rate,
+        ei.tax_rate::float AS tax_rate,
+        ei.tax_value::float AS tax_value,
         ei.description,
-        e.date,
+        e.date::text AS date,
         e.invoice_name,
         e.supplier_id,
         s.name AS supplier_name,
@@ -143,14 +143,14 @@ export default function registerExpenceCategoryIPC() {
     const { rows: totalRows } = await query(
       `SELECT
         COUNT(*) AS total,
-        COALESCE(SUM(ei.total), 0) AS "totalSpent"
+        COALESCE(SUM(ei.total), 0)::float AS "totalSpent"
       FROM expense_items ei
       JOIN expense e ON e.id = ei.expense_id
       WHERE ei.category_id = $1 ${dateFilter}`,
       [categoryId, ...dateValues],
     );
     const total = Number(totalRows[0].total);
-    const totalSpent = totalRows[0].totalSpent;
+    const totalSpent = Number(totalRows[0].totalSpent);
 
     return {
       data: rows,
@@ -165,7 +165,7 @@ export default function registerExpenceCategoryIPC() {
   ipcMain.handle("get-expence_category-by-id", async (event, id) => {
     try {
       const { rows } = await query(
-        "SELECT * FROM expense_category WHERE id = $1",
+        `SELECT id, name, latin_name AS "latinName", created_at::text AS created_at FROM expense_category WHERE id = $1`,
         [id],
       );
       return rows[0];

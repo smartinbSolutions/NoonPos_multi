@@ -149,7 +149,7 @@ async function fetchFundHistory(
         h.id,
         h.fund_id,
         h.record_type,
-        h.date,
+        h.date::text AS date,
         h.movement_type,
         h.amount,
         h.note,
@@ -347,7 +347,7 @@ export default function registerFundIPC() {
         c.name as currency_name,
         c.code as currency_code,
         c.symbol as currency_symbol,
-        c.exchange_rate as "currency_exchangeRate",
+        c.exchange_rate::float as "currency_exchangeRate",
         COALESCE(
           SUM(
             CASE
@@ -357,7 +357,7 @@ export default function registerFundIPC() {
             END
           ),
           0
-        ) AS computed_balance
+       )::float AS computed_balance
       FROM funds f
       LEFT JOIN currencies c ON c.id = f.currency_id
       LEFT JOIN fund_history fh ON fh.fund_id = f.id
@@ -377,7 +377,7 @@ export default function registerFundIPC() {
         c.name as currency_name,
         c.code as currency_code,
         c.symbol as currency_symbol,
-        c.exchange_rate as "currency_exchangeRate"
+         c.exchange_rate::float as "currency_exchangeRate"
       FROM funds f
       LEFT JOIN currencies c ON c.id = f.currency_id
       WHERE f.id = $1`,
@@ -394,7 +394,7 @@ export default function registerFundIPC() {
       }
 
       const { rows } = await query(
-        `SELECT MIN(date) AS "minDate" FROM fund_history WHERE fund_id = $1`,
+        `SELECT MIN(date)::text AS "minDate" FROM fund_history WHERE fund_id = $1`,
         [fundId],
       );
       return { success: true, minDate: rows[0]?.minDate || null };
@@ -793,6 +793,11 @@ export default function registerFundIPC() {
     const { rows: transfers } = await query(
       `SELECT
         t.*,
+         t.date::text AS date,
+        t.deduct_amount::float AS deduct_amount,
+        t.receive_amount::float AS receive_amount,
+       t.exchange_rate::float AS exchange_rate,
+       t.effective_rate::float AS effective_rate,
         ff.name AS from_fund_name,
         ff.currency_code AS from_fund_currency,
         tf.name AS to_fund_name,
@@ -835,6 +840,11 @@ export default function registerFundIPC() {
     const { rows } = await query(
       `SELECT
         t.*,
+         t.date::text AS date,
+        t.deduct_amount::float AS deduct_amount,
+        t.receive_amount::float AS receive_amount,
+        t.exchange_rate::float AS exchange_rate,
+        t.effective_rate::float AS effective_rate,
         ff.name AS from_fund_name,
         ffc.code AS from_fund_currency_code,
         ffc.symbol AS from_fund_currency_symbol,

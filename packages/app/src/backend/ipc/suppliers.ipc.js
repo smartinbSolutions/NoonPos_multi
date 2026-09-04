@@ -78,11 +78,11 @@ export default function registerSuppliersIPC() {
         s.name,
         s.phone,
         s.address,
-        s.created_at,
-        COALESCE(SUM(CASE WHEN ph.movement_type = 'increase' THEN ph.amount ELSE 0 END), 0) AS total,
-        COALESCE(SUM(CASE WHEN ph.movement_type = 'decrease' THEN ph.amount ELSE 0 END), 0) AS total_paid,
-        COALESCE(SUM(CASE WHEN ph.movement_type = 'increase' THEN ph.amount ELSE 0 END), 0)
-          - COALESCE(SUM(CASE WHEN ph.movement_type = 'decrease' THEN ph.amount ELSE 0 END), 0) AS balance
+        s.created_at::text AS created_at,
+        COALESCE(SUM(CASE WHEN ph.movement_type = 'increase' THEN ph.amount ELSE 0 END), 0)::float AS total,
+        COALESCE(SUM(CASE WHEN ph.movement_type = 'decrease' THEN ph.amount ELSE 0 END), 0)::float AS total_paid,
+        (COALESCE(SUM(CASE WHEN ph.movement_type = 'increase' THEN ph.amount ELSE 0 END), 0)
+          - COALESCE(SUM(CASE WHEN ph.movement_type = 'decrease' THEN ph.amount ELSE 0 END), 0))::float AS balance
       FROM suppliers s
       LEFT JOIN party_history ph
         ON ph.party_type = 'supplier'
@@ -107,9 +107,9 @@ export default function registerSuppliersIPC() {
       const { rows: statsRows } = await query(
         `SELECT
           COUNT(*) AS count,
-          COALESCE(SUM(total), 0) AS "totalPayable",
-          COALESCE(SUM(total_paid), 0) AS "totalPaid",
-          COALESCE(SUM(CASE WHEN balance > 0 THEN balance ELSE 0 END), 0) AS "netOutstanding"
+          COALESCE(SUM(total), 0)::float AS "totalPayable",
+          COALESCE(SUM(total_paid), 0)::float AS "totalPaid",
+          COALESCE(SUM(CASE WHEN balance > 0 THEN balance ELSE 0 END), 0)::float AS "netOutstanding"
         FROM (${perSupplierCTE}) sub`,
       );
       const stats = statsRows[0];
@@ -148,16 +148,17 @@ export default function registerSuppliersIPC() {
       const { rows } = await query(
         `SELECT
           s.*,
+          s.created_at::text AS created_at,
 
           COALESCE(
             SUM(CASE WHEN ph.movement_type = 'increase' THEN ph.amount ELSE 0 END),
             0
-          ) AS total,
+          )::float AS total,
 
           COALESCE(
             SUM(CASE WHEN ph.movement_type = 'decrease' THEN ph.amount ELSE 0 END),
             0
-          ) AS total_paid,
+          )::float AS total_paid,
 
           COALESCE(
             SUM(
@@ -168,7 +169,7 @@ export default function registerSuppliersIPC() {
               END
             ),
             0
-          ) AS balance
+          )::float AS balance
 
         FROM suppliers s
 

@@ -27,12 +27,17 @@ export default function registerUnitIPC() {
   });
 
   ipcMain.handle("get-units", async () => {
-    const { rows } = await query("SELECT * FROM unit");
+    const { rows } = await query(
+      `SELECT id, name, latin_name AS "latinName", code FROM unit`,
+    );
     return rows;
   });
 
   ipcMain.handle("get-unit", async (event, id) => {
-    const { rows } = await query("SELECT * FROM unit WHERE id = $1", [id]);
+    const { rows } = await query(
+      `SELECT id, name, latin_name AS "latinName", code FROM unit WHERE id = $1`,
+      [id],
+    );
     return rows[0];
   });
 

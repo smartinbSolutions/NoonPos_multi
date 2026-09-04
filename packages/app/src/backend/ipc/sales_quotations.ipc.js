@@ -506,11 +506,11 @@ export default function registerSalesQuotationsIPC() {
         .map(() => `$${paramIndex++}`)
         .join(",");
       whereConditions.push(`
-        EXISTS (
-          SELECT 1 FROM sales_quotation_taxes sqt
-          WHERE sqt.quotation_id = q.id AND sqt.tax_id IN (${taxPlaceholders})
-        )
-      `);
+      EXISTS (
+        SELECT 1 FROM sales_quotation_taxes sqt
+        WHERE sqt.quotation_id = q.id AND sqt.tax_id IN (${taxPlaceholders})
+      )
+    `);
       whereParams.push(...params.taxIds);
     }
 
@@ -520,46 +520,51 @@ export default function registerSalesQuotationsIPC() {
 
     const { rows: quotations } = await query(
       `SELECT
-        q.*,
-        c.name AS customer_name,
-        c.phone AS customer_phone,
-        creator.full_name AS created_by_name,
-        updater.full_name AS updated_by_name,
-        invoiceTaxAgg.taxes_json,
+      q.*,
+      q.date::text AS date,
+      q.subtotal::float AS subtotal,
+      q.discount::float AS discount,
+      q.tax_value::float AS tax_value,
+      q.net_total::float AS net_total,
+      c.name AS customer_name,
+      c.phone AS customer_phone,
+      creator.full_name AS created_by_name,
+      updater.full_name AS updated_by_name,
+      invoiceTaxAgg.taxes_json,
 
-        COALESCE(itemAgg.item_tax_total, 0) AS item_tax_total,
-        COALESCE(itemAgg.item_discount_total, 0) AS item_discount_total,
-        (q.tax_value + COALESCE(itemAgg.item_tax_total, 0)) AS total_tax_value,
-        (q.discount + COALESCE(itemAgg.item_discount_total, 0)) AS total_discount_value
+      COALESCE(itemAgg.item_tax_total, 0)::float AS item_tax_total,
+      COALESCE(itemAgg.item_discount_total, 0)::float AS item_discount_total,
+      (q.tax_value + COALESCE(itemAgg.item_tax_total, 0))::float AS total_tax_value,
+      (q.discount + COALESCE(itemAgg.item_discount_total, 0))::float AS total_discount_value
 
-      FROM sales_quotations q
+    FROM sales_quotations q
 
-      LEFT JOIN customers c ON c.id = q.customer_id
-      LEFT JOIN users creator ON creator.id = q.created_by
-      LEFT JOIN users updater ON updater.id = q.updated_by
+    LEFT JOIN customers c ON c.id = q.customer_id
+    LEFT JOIN users creator ON creator.id = q.created_by
+    LEFT JOIN users updater ON updater.id = q.updated_by
 
-      LEFT JOIN (
-        SELECT
-          quotation_id,
-          SUM(tax_value) AS item_tax_total,
-          SUM(discount) AS item_discount_total
-        FROM sales_quotation_items
-        GROUP BY quotation_id
-      ) itemAgg ON itemAgg.quotation_id = q.id
+    LEFT JOIN (
+      SELECT
+        quotation_id,
+        SUM(tax_value) AS item_tax_total,
+        SUM(discount) AS item_discount_total
+      FROM sales_quotation_items
+      GROUP BY quotation_id
+    ) itemAgg ON itemAgg.quotation_id = q.id
 
-      LEFT JOIN (
-        SELECT
-          quotation_id,
-          json_agg(
-            json_build_object('tax_id', tax_id, 'name', tax_name, 'rate', tax_rate, 'value', tax_value)
-          ) AS taxes_json
-        FROM sales_quotation_taxes
-        GROUP BY quotation_id
-      ) invoiceTaxAgg ON invoiceTaxAgg.quotation_id = q.id
+    LEFT JOIN (
+      SELECT
+        quotation_id,
+        json_agg(
+          json_build_object('tax_id', tax_id, 'name', tax_name, 'rate', tax_rate, 'value', tax_value)
+        ) AS taxes_json
+      FROM sales_quotation_taxes
+      GROUP BY quotation_id
+    ) invoiceTaxAgg ON invoiceTaxAgg.quotation_id = q.id
 
-      ${whereClause}
-      ORDER BY q.id DESC
-      LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`,
+    ${whereClause}
+    ORDER BY q.id DESC
+    LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`,
       [...whereParams, limit, offset],
     );
 
@@ -587,16 +592,21 @@ export default function registerSalesQuotationsIPC() {
   ipcMain.handle("get-sales-quotation", async (event, id) => {
     const { rows: quotationRows } = await query(
       `SELECT
-        q.*,
-        c.name AS customer_name,
-        c.phone AS customer_phone,
-        creator.full_name AS created_by_name,
-        updater.full_name AS updated_by_name
-      FROM sales_quotations q
-      LEFT JOIN customers c ON c.id = q.customer_id
-      LEFT JOIN users creator ON creator.id = q.created_by
-      LEFT JOIN users updater ON updater.id = q.updated_by
-      WHERE q.id = $1`,
+      q.*,
+      q.date::text AS date,
+      q.subtotal::float AS subtotal,
+      q.discount::float AS discount,
+      q.tax_value::float AS tax_value,
+      q.net_total::float AS net_total,
+      c.name AS customer_name,
+      c.phone AS customer_phone,
+      creator.full_name AS created_by_name,
+      updater.full_name AS updated_by_name
+    FROM sales_quotations q
+    LEFT JOIN customers c ON c.id = q.customer_id
+    LEFT JOIN users creator ON creator.id = q.created_by
+    LEFT JOIN users updater ON updater.id = q.updated_by
+    WHERE q.id = $1`,
       [id],
     );
     const quotation = quotationRows[0];
@@ -605,21 +615,28 @@ export default function registerSalesQuotationsIPC() {
 
     const { rows: items } = await query(
       `SELECT
-        qi.*,
-        p.name AS name,
-        t.name AS tax_name
-      FROM sales_quotation_items qi
-      LEFT JOIN products p ON p.id = qi.product_id
-      LEFT JOIN taxes t ON t.id = qi.tax_id
-      WHERE qi.quotation_id = $1`,
+      qi.*,
+      qi.quantity::float AS quantity,
+      qi.price::float AS price,
+      qi.total::float AS total,
+      qi.discount::float AS discount,
+      qi.discount_rate::float AS discount_rate,
+      qi.tax_rate::float AS tax_rate,
+      qi.tax_value::float AS tax_value,
+      p.name AS name,
+      t.name AS tax_name
+    FROM sales_quotation_items qi
+    LEFT JOIN products p ON p.id = qi.product_id
+    LEFT JOIN taxes t ON t.id = qi.tax_id
+    WHERE qi.quotation_id = $1`,
       [id],
     );
 
     const { rows: taxes } = await query(
-      `SELECT id, tax_id, tax_name, tax_rate, tax_value
-       FROM sales_quotation_taxes
-       WHERE quotation_id = $1
-       ORDER BY id ASC`,
+      `SELECT id, tax_id, tax_name, tax_rate::float AS tax_rate, tax_value::float AS tax_value
+     FROM sales_quotation_taxes
+     WHERE quotation_id = $1
+     ORDER BY id ASC`,
       [id],
     );
 

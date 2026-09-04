@@ -399,11 +399,11 @@ export default function registerSalesReturnsIpc() {
           .map(() => `$${paramIndex++}`)
           .join(",");
         whereConditions.push(`
-          EXISTS (
-            SELECT 1 FROM sales_return_taxes srt
-            WHERE srt.return_id = sr.id AND srt.tax_id IN (${taxPlaceholders})
-          )
-        `);
+        EXISTS (
+          SELECT 1 FROM sales_return_taxes srt
+          WHERE srt.return_id = sr.id AND srt.tax_id IN (${taxPlaceholders})
+        )
+      `);
         whereValues.push(...params.taxIds);
       }
 
@@ -413,90 +413,95 @@ export default function registerSalesReturnsIpc() {
 
       const havingClause = status
         ? `HAVING CASE
-          WHEN COALESCE(SUM(pa.amount), 0) >= sr.net_total THEN 'paid'
-          WHEN COALESCE(SUM(pa.amount), 0) > 0 THEN 'partial'
-          ELSE 'unpaid'
-        END = $${paramIndex}`
+        WHEN COALESCE(SUM(pa.amount), 0) >= sr.net_total THEN 'paid'
+        WHEN COALESCE(SUM(pa.amount), 0) > 0 THEN 'partial'
+        ELSE 'unpaid'
+      END = $${paramIndex}`
         : "";
       const havingValues = status ? [status] : [];
       if (status) paramIndex++;
 
       const { rows: returns } = await query(
         `SELECT
-          sr.*,
-          c.name AS customer_name,
-          c.phone AS customer_phone,
-          si.invoice_name AS original_invoice_name,
-          creator.full_name AS created_by_name,
+        sr.*,
+        sr.date::text AS date,
+        sr.subtotal::float AS subtotal,
+        sr.discount::float AS discount,
+        sr.tax_value::float AS tax_value,
+        sr.net_total::float AS net_total,
+        c.name AS customer_name,
+        c.phone AS customer_phone,
+        si.invoice_name AS original_invoice_name,
+        creator.full_name AS created_by_name,
 
-          returnTaxAgg.taxes_json,
+        returnTaxAgg.taxes_json,
 
-          COALESCE(itemAgg.item_tax_total, 0) AS item_tax_total,
-          COALESCE(itemAgg.item_discount_total, 0) AS item_discount_total,
-          (sr.tax_value + COALESCE(itemAgg.item_tax_total, 0)) AS total_tax_value,
-          (sr.discount + COALESCE(itemAgg.item_discount_total, 0)) AS total_discount_value,
+        COALESCE(itemAgg.item_tax_total, 0)::float AS item_tax_total,
+        COALESCE(itemAgg.item_discount_total, 0)::float AS item_discount_total,
+        (sr.tax_value + COALESCE(itemAgg.item_tax_total, 0))::float AS total_tax_value,
+        (sr.discount + COALESCE(itemAgg.item_discount_total, 0))::float AS total_discount_value,
 
-          COALESCE(SUM(pa.amount), 0) AS refunded_amount,
-          sr.net_total - COALESCE(SUM(pa.amount), 0) AS remaining_amount,
+        COALESCE(SUM(pa.amount), 0)::float AS refunded_amount,
+        (sr.net_total - COALESCE(SUM(pa.amount), 0))::float AS remaining_amount,
 
-          CASE
-            WHEN COALESCE(SUM(pa.amount), 0) >= sr.net_total THEN 'paid'
-            WHEN COALESCE(SUM(pa.amount), 0) > 0 THEN 'partial'
-            ELSE 'unpaid'
-          END AS status
+        CASE
+          WHEN COALESCE(SUM(pa.amount), 0) >= sr.net_total THEN 'paid'
+          WHEN COALESCE(SUM(pa.amount), 0) > 0 THEN 'partial'
+          ELSE 'unpaid'
+        END AS status
 
-        FROM sales_returns sr
-        LEFT JOIN customers c ON c.id = sr.customer_id
-        LEFT JOIN users creator ON creator.id = sr.created_by
-        LEFT JOIN sales_invoices si ON si.id = sr.sales_invoice_id
-        LEFT JOIN (
-          SELECT
-            return_id,
-            SUM(tax_value) AS item_tax_total,
-            SUM(discount) AS item_discount_total
-          FROM sales_return_items
-          GROUP BY return_id
-        ) itemAgg ON itemAgg.return_id = sr.id
-        LEFT JOIN (
-          SELECT
-            return_id,
-            json_agg(
-              json_build_object('tax_id', tax_id, 'name', tax_name, 'rate', tax_rate, 'value', tax_value)
-            ) AS taxes_json
-          FROM sales_return_taxes
-          GROUP BY return_id
-        ) returnTaxAgg ON returnTaxAgg.return_id = sr.id
-        LEFT JOIN payment_allocations pa
-          ON pa.invoice_id = sr.id AND pa.invoice_type = 'sales_return'
+      FROM sales_returns sr
+      LEFT JOIN customers c ON c.id = sr.customer_id
+      LEFT JOIN users creator ON creator.id = sr.created_by
+      LEFT JOIN sales_invoices si ON si.id = sr.sales_invoice_id
+      LEFT JOIN (
+        SELECT
+          return_id,
+          SUM(tax_value) AS item_tax_total,
+          SUM(discount) AS item_discount_total
+        FROM sales_return_items
+        GROUP BY return_id
+      ) itemAgg ON itemAgg.return_id = sr.id
+      LEFT JOIN (
+        SELECT
+          return_id,
+          json_agg(
+            json_build_object('tax_id', tax_id, 'name', tax_name, 'rate', tax_rate, 'value', tax_value)
+          ) AS taxes_json
+        FROM sales_return_taxes
+        GROUP BY return_id
+      ) returnTaxAgg ON returnTaxAgg.return_id = sr.id
+      LEFT JOIN payment_allocations pa
+        ON pa.invoice_id = sr.id AND pa.invoice_type = 'sales_return'
 
-        ${whereClause}
+      ${whereClause}
 
-        GROUP BY sr.id, c.name, c.phone, si.invoice_name, creator.full_name,
-                 returnTaxAgg.taxes_json, itemAgg.item_tax_total, itemAgg.item_discount_total
+      GROUP BY sr.id, c.name, c.phone, si.invoice_name, creator.full_name,
+               returnTaxAgg.taxes_json, itemAgg.item_tax_total, itemAgg.item_discount_total
 
-        ${havingClause}
+      ${havingClause}
 
-        ORDER BY sr.id DESC
-        LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`,
+      ORDER BY sr.id DESC
+      LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`,
         [...whereValues, ...havingValues, limit, offset],
       );
 
       const { rows: totalRows } = await query(
         `SELECT COUNT(*) AS total FROM (
-          SELECT
-            sr.id,
-            CASE
-              WHEN COALESCE(SUM(pa.amount), 0) >= sr.net_total THEN 'paid'
-              WHEN COALESCE(SUM(pa.amount), 0) > 0 THEN 'partial'
-              ELSE 'unpaid'
-            END AS status
-          FROM sales_returns sr
-          LEFT JOIN payment_allocations pa
-            ON pa.invoice_id = sr.id AND pa.invoice_type = 'sales_return'
-          ${whereClause}
-          GROUP BY sr.id
-          ${havingClause}
-        ) t`,
+        SELECT
+          sr.id,
+          CASE
+            WHEN COALESCE(SUM(pa.amount), 0) >= sr.net_total THEN 'paid'
+            WHEN COALESCE(SUM(pa.amount), 0) > 0 THEN 'partial'
+            ELSE 'unpaid'
+          END AS status
+        FROM sales_returns sr
+        LEFT JOIN payment_allocations pa
+          ON pa.invoice_id = sr.id AND pa.invoice_type = 'sales_return'
+        ${whereClause}
+        GROUP BY sr.id
+        ${havingClause}
+      ) t`,
         [...whereValues, ...havingValues],
       );
       const total = Number(totalRows[0].total);
@@ -522,32 +527,37 @@ export default function registerSalesReturnsIpc() {
   ipcMain.handle("get-sales-return-by-id", async (event, id) => {
     const { rows: returnRows } = await query(
       `SELECT
-        sr.*,
-        c.name AS customer_name,
-        c.phone AS customer_phone,
-        creator.full_name AS created_by_name,
-        si.invoice_name AS original_invoice_name,
+      sr.*,
+      sr.date::text AS date,
+      sr.subtotal::float AS subtotal,
+      sr.discount::float AS discount,
+      sr.tax_value::float AS tax_value,
+      sr.net_total::float AS net_total,
+      c.name AS customer_name,
+      c.phone AS customer_phone,
+      creator.full_name AS created_by_name,
+      si.invoice_name AS original_invoice_name,
 
-        COALESCE(pa_sum.paid_amount, 0) AS paid_amount,
-        sr.net_total - COALESCE(pa_sum.paid_amount, 0) AS remaining_amount,
+      COALESCE(pa_sum.paid_amount, 0)::float AS paid_amount,
+      (sr.net_total - COALESCE(pa_sum.paid_amount, 0))::float AS remaining_amount,
 
-        CASE
-          WHEN COALESCE(pa_sum.paid_amount, 0) >= sr.net_total THEN 'paid'
-          WHEN COALESCE(pa_sum.paid_amount, 0) > 0 THEN 'partial'
-          ELSE 'unpaid'
-        END AS status
+      CASE
+        WHEN COALESCE(pa_sum.paid_amount, 0) >= sr.net_total THEN 'paid'
+        WHEN COALESCE(pa_sum.paid_amount, 0) > 0 THEN 'partial'
+        ELSE 'unpaid'
+      END AS status
 
-      FROM sales_returns sr
-      LEFT JOIN customers c ON c.id = sr.customer_id
-      LEFT JOIN users creator ON creator.id = sr.created_by
-      LEFT JOIN sales_invoices si ON si.id = sr.sales_invoice_id
-      LEFT JOIN (
-        SELECT invoice_id, SUM(amount) AS paid_amount
-        FROM payment_allocations
-        WHERE invoice_type = 'sales_return'
-        GROUP BY invoice_id
-      ) pa_sum ON pa_sum.invoice_id = sr.id
-      WHERE sr.id = $1`,
+    FROM sales_returns sr
+    LEFT JOIN customers c ON c.id = sr.customer_id
+    LEFT JOIN users creator ON creator.id = sr.created_by
+    LEFT JOIN sales_invoices si ON si.id = sr.sales_invoice_id
+    LEFT JOIN (
+      SELECT invoice_id, SUM(amount) AS paid_amount
+      FROM payment_allocations
+      WHERE invoice_type = 'sales_return'
+      GROUP BY invoice_id
+    ) pa_sum ON pa_sum.invoice_id = sr.id
+    WHERE sr.id = $1`,
       [id],
     );
     const returnInvoice = returnRows[0];
@@ -556,46 +566,53 @@ export default function registerSalesReturnsIpc() {
 
     const { rows: items } = await query(
       `SELECT
-        sri.*,
-        p.name AS name,
-        t.name AS tax_name
-      FROM sales_return_items sri
-      LEFT JOIN products p ON p.id = sri.product_id
-      LEFT JOIN taxes t ON t.id = sri.tax_id
-      WHERE sri.return_id = $1`,
+      sri.*,
+      sri.quantity::float AS quantity,
+      sri.price::float AS price,
+      sri.total::float AS total,
+      sri.discount::float AS discount,
+      sri.discount_rate::float AS discount_rate,
+      sri.tax_rate::float AS tax_rate,
+      sri.tax_value::float AS tax_value,
+      p.name AS name,
+      t.name AS tax_name
+    FROM sales_return_items sri
+    LEFT JOIN products p ON p.id = sri.product_id
+    LEFT JOIN taxes t ON t.id = sri.tax_id
+    WHERE sri.return_id = $1`,
       [id],
     );
 
     const { rows: taxes } = await query(
-      `SELECT id, tax_id, tax_name, tax_rate, tax_value
-       FROM sales_return_taxes
-       WHERE return_id = $1
-       ORDER BY id ASC`,
+      `SELECT id, tax_id, tax_name, tax_rate::float AS tax_rate, tax_value::float AS tax_value
+     FROM sales_return_taxes
+     WHERE return_id = $1
+     ORDER BY id ASC`,
       [id],
     );
 
     const { rows: allocations } = await query(
       `SELECT
-        pa.id,
-        pa.payment_id,
-        pa.amount,
-        p.date,
-        p.fund_id,
-        p.note,
-        p.currency_code,
-        p.exchange_rate,
-        p.effective_rate,
-        p.amount_fund_currency,
-        f.name AS fund_name,
-        c.code AS fund_currency_code,
-        c.symbol AS fund_currency_symbol
-      FROM payment_allocations pa
-      LEFT JOIN payments p ON p.id = pa.payment_id
-      LEFT JOIN funds f ON f.id = p.fund_id
-      LEFT JOIN currencies c ON c.id = f.currency_id
-      WHERE pa.invoice_id = $1
-        AND pa.invoice_type = 'sales_return'
-      ORDER BY pa.id ASC`,
+      pa.id,
+      pa.payment_id,
+      pa.amount::float AS amount,
+      p.date::text AS date,
+      p.fund_id,
+      p.note,
+      p.currency_code,
+      p.exchange_rate::float AS exchange_rate,
+      p.effective_rate::float AS effective_rate,
+      p.amount_fund_currency::float AS amount_fund_currency,
+      f.name AS fund_name,
+      c.code AS fund_currency_code,
+      c.symbol AS fund_currency_symbol
+    FROM payment_allocations pa
+    LEFT JOIN payments p ON p.id = pa.payment_id
+    LEFT JOIN funds f ON f.id = p.fund_id
+    LEFT JOIN currencies c ON c.id = f.currency_id
+    WHERE pa.invoice_id = $1
+      AND pa.invoice_type = 'sales_return'
+    ORDER BY pa.id ASC`,
       [id],
     );
 

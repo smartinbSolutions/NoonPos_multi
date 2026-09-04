@@ -334,11 +334,11 @@ export default function registerExpenseIPC() {
         .map(() => `$${paramIndex++}`)
         .join(",");
       whereConditions.push(`
-        EXISTS (
-          SELECT 1 FROM expense_taxes et
-          WHERE et.expense_id = e.id AND et.tax_id IN (${taxPlaceholders})
-        )
-      `);
+      EXISTS (
+        SELECT 1 FROM expense_taxes et
+        WHERE et.expense_id = e.id AND et.tax_id IN (${taxPlaceholders})
+      )
+    `);
       whereValues.push(...params.taxIds);
     }
     if (minTotal !== undefined && minTotal !== "" && minTotal !== null) {
@@ -364,12 +364,12 @@ export default function registerExpenseIPC() {
       : "";
 
     const statusExpr = `
-      CASE
-        WHEN COALESCE(SUM(pa.amount), 0) >= e.net_total THEN 'paid'
-        WHEN COALESCE(SUM(pa.amount), 0) > 0 THEN 'partial'
-        ELSE 'unpaid'
-      END
-    `;
+    CASE
+      WHEN COALESCE(SUM(pa.amount), 0) >= e.net_total THEN 'paid'
+      WHEN COALESCE(SUM(pa.amount), 0) > 0 THEN 'partial'
+      ELSE 'unpaid'
+    END
+  `;
     const havingClause = status ? `HAVING ${statusExpr} = $${paramIndex}` : "";
     const havingValues = status ? [status] : [];
     if (status) paramIndex++;
@@ -377,85 +377,90 @@ export default function registerExpenseIPC() {
     try {
       const { rows } = await query(
         `SELECT
-          e.*,
-          s.name AS supplier_name,
-          s.phone AS supplier_phone,
-          creator.full_name AS created_by_name,
-          updater.full_name AS updated_by_name,
+        e.*,
+        e.date::text AS date,
+        e.subtotal::float AS subtotal,
+        e.discount::float AS discount,
+        e.tax_value::float AS tax_value,
+        e.net_total::float AS net_total,
+        s.name AS supplier_name,
+        s.phone AS supplier_phone,
+        creator.full_name AS created_by_name,
+        updater.full_name AS updated_by_name,
 
-          COALESCE(SUM(pa.amount), 0) AS paid_amount,
-          e.net_total - COALESCE(SUM(pa.amount), 0) AS remaining_amount,
+        COALESCE(SUM(pa.amount), 0)::float AS paid_amount,
+        (e.net_total - COALESCE(SUM(pa.amount), 0))::float AS remaining_amount,
 
-          ${statusExpr} AS status,
+        ${statusExpr} AS status,
 
-          COALESCE(itemAgg.item_tax_total, 0) AS item_tax_total,
-          COALESCE(itemAgg.item_discount_total, 0) AS item_discount_total,
-          (e.tax_value + COALESCE(itemAgg.item_tax_total, 0)) AS total_tax_value,
-          (e.discount + COALESCE(itemAgg.item_discount_total, 0)) AS total_discount_value,
+        COALESCE(itemAgg.item_tax_total, 0)::float AS item_tax_total,
+        COALESCE(itemAgg.item_discount_total, 0)::float AS item_discount_total,
+        (e.tax_value + COALESCE(itemAgg.item_tax_total, 0))::float AS total_tax_value,
+        (e.discount + COALESCE(itemAgg.item_discount_total, 0))::float AS total_discount_value,
 
-          expenseTaxAgg.taxes_json,
+        expenseTaxAgg.taxes_json,
 
-          (
-            SELECT STRING_AGG(DISTINCT ec.name, ', ')
-            FROM expense_items ei2
-            JOIN expense_category ec ON ec.id = ei2.category_id
-            WHERE ei2.expense_id = e.id
-          ) AS category_names
+        (
+          SELECT STRING_AGG(DISTINCT ec.name, ', ')
+          FROM expense_items ei2
+          JOIN expense_category ec ON ec.id = ei2.category_id
+          WHERE ei2.expense_id = e.id
+        ) AS category_names
 
-        FROM expense e
+      FROM expense e
 
-        LEFT JOIN suppliers s ON s.id = e.supplier_id
-        LEFT JOIN users creator ON creator.id = e.created_by
-        LEFT JOIN users updater ON updater.id = e.updated_by
+      LEFT JOIN suppliers s ON s.id = e.supplier_id
+      LEFT JOIN users creator ON creator.id = e.created_by
+      LEFT JOIN users updater ON updater.id = e.updated_by
 
-        LEFT JOIN payment_allocations pa
-          ON pa.invoice_id = e.id
-         AND pa.invoice_type = 'expense'
+      LEFT JOIN payment_allocations pa
+        ON pa.invoice_id = e.id
+       AND pa.invoice_type = 'expense'
 
-        LEFT JOIN (
-          SELECT
-            expense_id,
-            SUM(tax_value) AS item_tax_total,
-            SUM(discount) AS item_discount_total
-          FROM expense_items
-          GROUP BY expense_id
-        ) itemAgg ON itemAgg.expense_id = e.id
+      LEFT JOIN (
+        SELECT
+          expense_id,
+          SUM(tax_value) AS item_tax_total,
+          SUM(discount) AS item_discount_total
+        FROM expense_items
+        GROUP BY expense_id
+      ) itemAgg ON itemAgg.expense_id = e.id
 
-        LEFT JOIN (
-          SELECT
-            expense_id,
-            json_agg(
-              json_build_object('tax_id', tax_id, 'name', tax_name, 'rate', tax_rate, 'value', tax_value)
-            ) AS taxes_json
-          FROM expense_taxes
-          GROUP BY expense_id
-        ) expenseTaxAgg ON expenseTaxAgg.expense_id = e.id
+      LEFT JOIN (
+        SELECT
+          expense_id,
+          json_agg(
+            json_build_object('tax_id', tax_id, 'name', tax_name, 'rate', tax_rate, 'value', tax_value)
+          ) AS taxes_json
+        FROM expense_taxes
+        GROUP BY expense_id
+      ) expenseTaxAgg ON expenseTaxAgg.expense_id = e.id
 
-        ${whereClause}
+      ${whereClause}
 
-        GROUP BY e.id, s.name, s.phone, creator.full_name, updater.full_name,
-                 itemAgg.item_tax_total, itemAgg.item_discount_total, expenseTaxAgg.taxes_json
+      GROUP BY e.id, s.name, s.phone, creator.full_name, updater.full_name,
+               itemAgg.item_tax_total, itemAgg.item_discount_total, expenseTaxAgg.taxes_json
 
-        ${havingClause}
+      ${havingClause}
 
-        ORDER BY e.id DESC
+      ORDER BY e.id DESC
 
-        LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`,
+      LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`,
         [...whereValues, ...havingValues, limit, offset],
       );
 
       const { rows: totalRows } = await query(
         `SELECT COUNT(*) AS total
-         FROM (
-           SELECT e.id
-           FROM expense e
-           LEFT JOIN payment_allocations pa
-             ON pa.invoice_id = e.id
-            AND pa.invoice_type = 'expense'
-           ${whereClause}
-           GROUP BY e.id
-           ${status ? `HAVING ${statusExpr} = $${whereValues.length + 1}` : ""}
-         ) sub`,
+       FROM (
+         SELECT e.id
+         FROM expense e
+         LEFT JOIN payment_allocations pa
+           ON pa.invoice_id = e.id
+          AND pa.invoice_type = 'expense'
+         ${whereClause}
+         GROUP BY e.id
+         ${status ? `HAVING ${statusExpr} = $${whereValues.length + 1}` : ""}
+       ) sub`,
         [...whereValues, ...(status ? [status] : [])],
       );
       const total = Number(totalRows[0].total);
@@ -482,31 +487,36 @@ export default function registerExpenseIPC() {
     try {
       const { rows: invoiceRows } = await query(
         `SELECT
-          e.*,
-          s.name AS supplier_name,
-          s.phone AS supplier_phone,
-          creator.full_name AS created_by_name,
-          updater.full_name AS updated_by_name,
-          COALESCE(pa_sum.paid_amount, 0) AS paid_amount,
-          e.net_total - COALESCE(pa_sum.paid_amount, 0) AS remaining_amount,
+        e.*,
+        e.date::text AS date,
+        e.subtotal::float AS subtotal,
+        e.discount::float AS discount,
+        e.tax_value::float AS tax_value,
+        e.net_total::float AS net_total,
+        s.name AS supplier_name,
+        s.phone AS supplier_phone,
+        creator.full_name AS created_by_name,
+        updater.full_name AS updated_by_name,
+        COALESCE(pa_sum.paid_amount, 0)::float AS paid_amount,
+        (e.net_total - COALESCE(pa_sum.paid_amount, 0))::float AS remaining_amount,
 
-          CASE
-            WHEN COALESCE(pa_sum.paid_amount, 0) >= e.net_total THEN 'paid'
-            WHEN COALESCE(pa_sum.paid_amount, 0) > 0 THEN 'partial'
-            ELSE 'unpaid'
-          END AS status
+        CASE
+          WHEN COALESCE(pa_sum.paid_amount, 0) >= e.net_total THEN 'paid'
+          WHEN COALESCE(pa_sum.paid_amount, 0) > 0 THEN 'partial'
+          ELSE 'unpaid'
+        END AS status
 
-        FROM expense e
-        LEFT JOIN users creator ON creator.id = e.created_by
-        LEFT JOIN users updater ON updater.id = e.updated_by
-        LEFT JOIN suppliers s ON s.id = e.supplier_id
-        LEFT JOIN (
-          SELECT invoice_id, SUM(amount) AS paid_amount
-          FROM payment_allocations
-          WHERE invoice_type = 'expense'
-          GROUP BY invoice_id
-        ) pa_sum ON pa_sum.invoice_id = e.id
-        WHERE e.id = $1`,
+      FROM expense e
+      LEFT JOIN users creator ON creator.id = e.created_by
+      LEFT JOIN users updater ON updater.id = e.updated_by
+      LEFT JOIN suppliers s ON s.id = e.supplier_id
+      LEFT JOIN (
+        SELECT invoice_id, SUM(amount) AS paid_amount
+        FROM payment_allocations
+        WHERE invoice_type = 'expense'
+        GROUP BY invoice_id
+      ) pa_sum ON pa_sum.invoice_id = e.id
+      WHERE e.id = $1`,
         [id],
       );
       const invoice = invoiceRows[0];
@@ -515,41 +525,47 @@ export default function registerExpenseIPC() {
 
       const { rows: items } = await query(
         `SELECT
-          ei.*,
-          c.name AS category_name,
-          t.name AS tax_name
-        FROM expense_items ei
-        LEFT JOIN expense_category c ON c.id = ei.category_id
-        LEFT JOIN taxes t ON t.id = ei.tax_id
-        WHERE ei.expense_id = $1`,
+        ei.*,
+        ei.price::float AS price,
+        ei.total::float AS total,
+        ei.discount::float AS discount,
+        ei.discount_rate::float AS discount_rate,
+        ei.tax_rate::float AS tax_rate,
+        ei.tax_value::float AS tax_value,
+        c.name AS category_name,
+        t.name AS tax_name
+      FROM expense_items ei
+      LEFT JOIN expense_category c ON c.id = ei.category_id
+      LEFT JOIN taxes t ON t.id = ei.tax_id
+      WHERE ei.expense_id = $1`,
         [id],
       );
 
       const { rows: taxes } = await query(
-        `SELECT id, tax_id, tax_name, tax_rate, tax_value
-         FROM expense_taxes
-         WHERE expense_id = $1
-         ORDER BY id ASC`,
+        `SELECT id, tax_id, tax_name, tax_rate::float AS tax_rate, tax_value::float AS tax_value
+       FROM expense_taxes
+       WHERE expense_id = $1
+       ORDER BY id ASC`,
         [id],
       );
 
       const { rows: allocations } = await query(
         `SELECT
-          pa.id,
-          pa.payment_id,
-          pa.amount,
-          p.date,
-          p.fund_id,
-          f.name AS fund_name,
-          c.code AS fund_currency_code,
-          c.symbol AS fund_currency_symbol
-        FROM payment_allocations pa
-        LEFT JOIN payments p ON p.id = pa.payment_id
-        LEFT JOIN funds f ON f.id = p.fund_id
-        LEFT JOIN currencies c ON c.id = f.currency_id
-        WHERE pa.invoice_id = $1
-          AND pa.invoice_type = 'expense'
-        ORDER BY pa.id ASC`,
+        pa.id,
+        pa.payment_id,
+        pa.amount::float AS amount,
+        p.date::text AS date,
+        p.fund_id,
+        f.name AS fund_name,
+        c.code AS fund_currency_code,
+        c.symbol AS fund_currency_symbol
+      FROM payment_allocations pa
+      LEFT JOIN payments p ON p.id = pa.payment_id
+      LEFT JOIN funds f ON f.id = p.fund_id
+      LEFT JOIN currencies c ON c.id = f.currency_id
+      WHERE pa.invoice_id = $1
+        AND pa.invoice_type = 'expense'
+      ORDER BY pa.id ASC`,
         [id],
       );
 

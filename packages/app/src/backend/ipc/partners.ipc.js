@@ -62,16 +62,17 @@ export default function registerPartnersIPC() {
     const { rows: partners } = await query(
       `SELECT
         p.*,
+        p.created_at::text AS created_at,
 
         COALESCE(
           SUM(CASE WHEN ph.movement_type = 'increase' THEN ph.amount ELSE 0 END),
           0
-        ) AS total_deposit,
+        )::float AS total_deposit,
 
         COALESCE(
           SUM(CASE WHEN ph.movement_type = 'decrease' THEN ph.amount ELSE 0 END),
           0
-        ) AS total_withdrawal,
+        )::float AS total_withdrawal,
 
         COALESCE(
           SUM(
@@ -82,7 +83,7 @@ export default function registerPartnersIPC() {
             END
           ),
           0
-        ) AS balance
+        )::float AS balance
 
       FROM partners p
       LEFT JOIN party_history ph
@@ -114,16 +115,17 @@ export default function registerPartnersIPC() {
     const { rows } = await query(
       `SELECT
         p.*,
+        p.created_at::text AS created_at,
 
         COALESCE(
           SUM(CASE WHEN ph.movement_type = 'increase' THEN ph.amount ELSE 0 END),
           0
-        ) AS total_deposit,
+        )::float AS total_deposit,
 
         COALESCE(
           SUM(CASE WHEN ph.movement_type = 'decrease' THEN ph.amount ELSE 0 END),
           0
-        ) AS total_withdrawal,
+        )::float AS total_withdrawal,
 
         COALESCE(
           SUM(
@@ -134,7 +136,7 @@ export default function registerPartnersIPC() {
             END
           ),
           0
-        ) AS balance
+        )::float AS balance
 
       FROM partners p
       LEFT JOIN party_history ph

@@ -92,16 +92,38 @@ export default function registerCurrenciesIPC() {
       return { success: false, error: err.message || String(err) };
     }
   });
-
   ipcMain.handle("get-currencies", async () => {
-    const { rows } = await query("SELECT * FROM currencies");
+    const { rows } = await query(`
+    SELECT
+      id,
+      name,
+      latin_name AS "latinName",
+      minor_name AS "minorName",
+      minor_latin_name AS "minorLatinName",
+      code,
+      exchange_rate::float AS "exchangeRate",
+      symbol,
+      CASE WHEN is_primary THEN 1 ELSE 0 END AS "isPrimary"
+    FROM currencies
+  `);
     return rows;
   });
 
   ipcMain.handle("get-currency", async (event, id) => {
-    const { rows } = await query("SELECT * FROM currencies WHERE id = $1", [
+    const { rows } = await query(
+      `SELECT
       id,
-    ]);
+      name,
+      latin_name AS "latinName",
+      minor_name AS "minorName",
+      minor_latin_name AS "minorLatinName",
+      code,
+      exchange_rate::float AS "exchangeRate",
+      symbol,
+      CASE WHEN is_primary THEN 1 ELSE 0 END AS "isPrimary"
+    FROM currencies WHERE id = $1`,
+      [id],
+    );
     return rows[0];
   });
 

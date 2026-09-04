@@ -225,6 +225,11 @@ export default function registerPaymentIPC() {
     const { rows: payments } = await query(
       `SELECT
         p.*,
+        p.date::text AS date,
+        p.amount::float AS amount,
+        p.exchange_rate::float AS exchange_rate,
+        p.effective_rate::float AS effective_rate,
+        p.amount_fund_currency::float AS amount_fund_currency,
         f.name AS fund_name,
         c.code AS fund_currency_code,
         c.symbol AS fund_currency_symbol,
@@ -417,6 +422,11 @@ export default function registerPaymentIPC() {
     const { rows: paymentRows } = await query(
       `SELECT
         p.*,
+        p.date::text AS date,
+        p.amount::float AS amount,
+        p.exchange_rate::float AS exchange_rate,
+        p.effective_rate::float AS effective_rate,
+        p.amount_fund_currency::float AS amount_fund_currency,
         f.name AS fund_name,
         c.code AS fund_currency_code,
         c.symbol AS fund_currency_symbol,
@@ -439,16 +449,18 @@ export default function registerPaymentIPC() {
 
     const { rows: allocationRows } = await query(
       `SELECT
-        pa.*,
+       pa.*,
+        pa.amount::float AS amount,
 
-        COALESCE(pi.net_total, si.net_total, ex.net_total, ob.amount) AS invoice_total,
+        COALESCE(pi.net_total, si.net_total, ex.net_total, ob.amount)::float AS invoice_total,
+
 
         (
           SELECT COALESCE(SUM(pa2.amount), 0)
           FROM payment_allocations pa2
           WHERE pa2.invoice_id = pa.invoice_id
             AND pa2.invoice_type = pa.invoice_type
-        ) AS total_allocated_to_invoice
+       )::float AS total_allocated_to_invoice
 
       FROM payment_allocations pa
       LEFT JOIN purchase_invoices pi ON pi.id = pa.invoice_id AND pa.invoice_type = 'purchase'
@@ -476,15 +488,16 @@ export default function registerPaymentIPC() {
     const { rows: allocations } = await query(
       `SELECT
         pa.*,
+        pa.amount::float AS amount,
 
-        COALESCE(pi.net_total, si.net_total, ex.net_total, ob.amount) AS invoice_total,
+        COALESCE(pi.net_total, si.net_total, ex.net_total, ob.amount)::float AS invoice_total,
 
         (
           SELECT COALESCE(SUM(pa2.amount), 0)
           FROM payment_allocations pa2
           WHERE pa2.invoice_id = pa.invoice_id
             AND pa2.invoice_type = pa.invoice_type
-        ) AS total_allocated_to_invoice
+          )::float AS total_allocated_to_invoice
 
       FROM payment_allocations pa
       LEFT JOIN purchase_invoices pi ON pi.id = pa.invoice_id AND pa.invoice_type = 'purchase'
@@ -510,6 +523,7 @@ export default function registerPaymentIPC() {
     const { rows } = await query(
       `SELECT
         p.*,
+        p.date::text AS date,
         f.name AS fund_name,
         c.code AS fund_currency_code,
         c.symbol AS fund_currency_symbol,
@@ -545,6 +559,11 @@ export default function registerPaymentIPC() {
         `SELECT * FROM (
           SELECT
             p.*,
+            p.date::text AS date,
+          p.amount::float AS amount,
+          p.exchange_rate::float AS exchange_rate,
+          p.effective_rate::float AS effective_rate,
+          p.amount_fund_currency::float AS amount_fund_currency,
             f.name AS fund_name,
             c.code AS fund_currency_code,
             c.symbol AS fund_currency_symbol,
@@ -577,24 +596,23 @@ export default function registerPaymentIPC() {
       return rows;
     },
   );
-
   ipcMain.handle(
     "get-party-opening-balance",
     async (event, { partyId, partyType }) => {
       const { rows } = await query(
         `SELECT COALESCE(SUM(
-          CASE
-            WHEN type = 'income' THEN amount
-            ELSE -amount
-          END
-        ), 0) AS balance
-        FROM payments
-        WHERE party_id = $1
-          AND party_type = $2`,
+        CASE
+          WHEN type = 'income' THEN amount
+          ELSE -amount
+        END
+      ), 0)::float AS balance
+      FROM payments
+      WHERE party_id = $1
+        AND party_type = $2`,
         [partyId, partyType],
       );
 
-      return rows[0]?.balance || 0;
+      return Number(rows[0]?.balance) || 0;
     },
   );
 

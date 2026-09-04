@@ -15,6 +15,7 @@ import {
   buildDefaultPaymentNote,
 } from "../utils/helpers";
 import { applyPartyCredit } from "../utils/partyCredit";
+import { query, getClient } from "../dbConnect.js";
 
 const escapeHtml = (value) =>
   String(value ?? "")
@@ -462,19 +463,24 @@ export default function registerSalesInvoiceIPC() {
     const { rows: invoices } = await query(
       `SELECT
       s.*,
+      s.date::text AS date,
+      s.subtotal::float AS subtotal,
+      s.discount::float AS discount,
+      s.tax_value::float AS tax_value,
+      s.net_total::float AS net_total,
       c.name AS customer_name,
       c.phone AS customer_phone,
       creator.full_name AS created_by_name,
       updater.full_name AS updated_by_name,
       invoiceTaxAgg.taxes_json,
-      COALESCE(SUM(pa.amount), 0) AS paid_amount,
+      COALESCE(SUM(pa.amount), 0)::float AS paid_amount,
 
-      COALESCE(itemAgg.item_tax_total, 0) AS item_tax_total,
-      COALESCE(itemAgg.item_discount_total, 0) AS item_discount_total,
-      (s.tax_value + COALESCE(itemAgg.item_tax_total, 0)) AS total_tax_value,
-      (s.discount + COALESCE(itemAgg.item_discount_total, 0)) AS total_discount_value,
+      COALESCE(itemAgg.item_tax_total, 0)::float AS item_tax_total,
+      COALESCE(itemAgg.item_discount_total, 0)::float AS item_discount_total,
+      (s.tax_value + COALESCE(itemAgg.item_tax_total, 0))::float AS total_tax_value,
+      (s.discount + COALESCE(itemAgg.item_discount_total, 0))::float AS total_discount_value,
 
-      s.net_total - COALESCE(SUM(pa.amount), 0) AS remaining_amount,
+      (s.net_total - COALESCE(SUM(pa.amount), 0))::float AS remaining_amount,
 
       CASE
         WHEN COALESCE(SUM(pa.amount), 0) >= s.net_total THEN 'paid'
@@ -587,12 +593,17 @@ export default function registerSalesInvoiceIPC() {
     const { rows: invoiceRows } = await query(
       `SELECT
       sa.*,
+      sa.date::text AS date,
+      sa.subtotal::float AS subtotal,
+      sa.discount::float AS discount,
+      sa.tax_value::float AS tax_value,
+      sa.net_total::float AS net_total,
       c.name AS customer_name,
       c.phone AS customer_phone,
       creator.full_name AS created_by_name,
       updater.full_name AS updated_by_name,
-      COALESCE(pa_sum.paid_amount, 0) AS paid_amount,
-      sa.net_total - COALESCE(pa_sum.paid_amount, 0) AS remaining_amount,
+      COALESCE(pa_sum.paid_amount, 0)::float AS paid_amount,
+      (sa.net_total - COALESCE(pa_sum.paid_amount, 0))::float AS remaining_amount,
 
       CASE
         WHEN COALESCE(pa_sum.paid_amount, 0) >= sa.net_total THEN 'paid'
@@ -620,12 +631,20 @@ export default function registerSalesInvoiceIPC() {
     const { rows: items } = await query(
       `SELECT
       si.*,
+      si.quantity::float AS quantity,
+      si.price::float AS price,
+      si.buying_price::float AS buying_price,
+      si.total::float AS total,
+      si.discount::float AS discount,
+      si.discount_rate::float AS discount_rate,
+      si.tax_rate::float AS tax_rate,
+      si.tax_value::float AS tax_value,
       p.name AS name,
       t.name AS tax_name,
 
-      COALESCE(r.returned_quantity, 0) AS returned_quantity,
+      COALESCE(r.returned_quantity, 0)::float AS returned_quantity,
 
-      (si.quantity - COALESCE(r.returned_quantity, 0)) AS available_quantity,
+      (si.quantity - COALESCE(r.returned_quantity, 0))::float AS available_quantity,
 
       (
         (si.quantity - COALESCE(r.returned_quantity, 0))
@@ -633,14 +652,14 @@ export default function registerSalesInvoiceIPC() {
             (si.price - (si.discount / NULLIF(si.quantity, 0)))
             - si.buying_price
           )
-      ) AS item_profit,
+      )::float AS item_profit,
 
       (
         (si.price - (si.discount / NULLIF(si.quantity, 0)))
         - si.buying_price
-      ) AS item_profit_per_unit,
+      )::float AS item_profit_per_unit,
 
-      CASE
+      (CASE
         WHEN si.price > 0 THEN
           ROUND(
             (
@@ -652,7 +671,7 @@ export default function registerSalesInvoiceIPC() {
             2
           )
         ELSE 0
-      END AS item_margin_percent
+      END)::float AS item_margin_percent
 
     FROM sales_invoice_items si
     LEFT JOIN products p ON p.id = si.product_id
@@ -670,7 +689,7 @@ export default function registerSalesInvoiceIPC() {
     );
 
     const { rows: taxes } = await query(
-      `SELECT id, tax_id, tax_name, tax_rate, tax_value
+      `SELECT id, tax_id, tax_name, tax_rate::float AS tax_rate, tax_value::float AS tax_value
      FROM sales_invoice_taxes
      WHERE invoice_id = $1
      ORDER BY id ASC`,
@@ -681,14 +700,14 @@ export default function registerSalesInvoiceIPC() {
       `SELECT
       pa.id,
       pa.payment_id,
-      pa.amount,
-      p.date,
+      pa.amount::float AS amount,
+      p.date::text AS date,
       p.fund_id,
       p.note,
       p.currency_code,
-      p.exchange_rate,
-      p.effective_rate,
-      p.amount_fund_currency,
+      p.exchange_rate::float AS exchange_rate,
+      p.effective_rate::float AS effective_rate,
+      p.amount_fund_currency::float AS amount_fund_currency,
       f.name AS fund_name,
       c.code AS fund_currency_code,
       c.symbol AS fund_currency_symbol
@@ -752,6 +771,7 @@ export default function registerSalesInvoiceIPC() {
       },
     };
   });
+
   // UPDATE
   ipcMain.handle("update-sales-invoice", async (event, data) => {
     if (
@@ -1572,147 +1592,147 @@ export default function registerSalesInvoiceIPC() {
 
     const { rows } = await query(
       `
-    SELECT * FROM (
+  SELECT * FROM (
+    SELECT
+      s.id,
+      s.date::text AS date,
+      s.net_total::float AS net_total,
+      s.net_total::float AS paid_amount,
+      'paid' AS status,
+      'sale' AS type,
+      NULL::integer AS sales_invoice_id,
+      CASE
+        WHEN COALESCE(ret.total_returned, 0) <= 0 THEN 'none'
+        WHEN ret.total_returned >= ret.total_quantity THEN 'full'
+        ELSE 'partial'
+      END AS return_status
+    FROM sales_invoices s
+    LEFT JOIN (
       SELECT
-        s.id,
-        s.date,
-        s.net_total,
-        s.net_total AS paid_amount,
-        'paid' AS status,
-        'sale' AS type,
-        NULL::integer AS sales_invoice_id,
-        CASE
-          WHEN COALESCE(ret.total_returned, 0) <= 0 THEN 'none'
-          WHEN ret.total_returned >= ret.total_quantity THEN 'full'
-          ELSE 'partial'
-        END AS return_status
-      FROM sales_invoices s
+        si.invoice_id,
+        SUM(si.quantity) AS total_quantity,
+        SUM(COALESCE(sri.returned_qty, 0)) AS total_returned
+      FROM sales_invoice_items si
       LEFT JOIN (
-        SELECT
-          si.invoice_id,
-          SUM(si.quantity) AS total_quantity,
-          SUM(COALESCE(sri.returned_qty, 0)) AS total_returned
-        FROM sales_invoice_items si
-        LEFT JOIN (
-          SELECT sales_invoice_item_id, SUM(quantity) AS returned_qty
-          FROM sales_return_items
-          GROUP BY sales_invoice_item_id
-        ) sri ON sri.sales_invoice_item_id = si.id
-        GROUP BY si.invoice_id
-      ) ret ON ret.invoice_id = s.id
-      WHERE s.date::date = $1::date AND s.channel = 'pos'
+        SELECT sales_invoice_item_id, SUM(quantity) AS returned_qty
+        FROM sales_return_items
+        GROUP BY sales_invoice_item_id
+      ) sri ON sri.sales_invoice_item_id = si.id
+      GROUP BY si.invoice_id
+    ) ret ON ret.invoice_id = s.id
+    WHERE s.date::date = $1::date AND s.channel = 'pos'
 
-      UNION ALL
+    UNION ALL
 
-      SELECT
-        r.id,
-        r.date,
-        r.net_total,
-        r.net_total AS paid_amount,
-        NULL AS status,
-        'return' AS type,
-        r.sales_invoice_id,
-        NULL AS return_status
-      FROM sales_returns r
-      WHERE r.date::date = $2::date AND r.channel = 'pos'
-    ) t
-    ORDER BY date DESC, id DESC
-    LIMIT $3 OFFSET $4
-    `,
+    SELECT
+      r.id,
+      r.date::text AS date,
+      r.net_total::float AS net_total,
+      r.net_total::float AS paid_amount,
+      NULL AS status,
+      'return' AS type,
+      r.sales_invoice_id,
+      NULL AS return_status
+    FROM sales_returns r
+    WHERE r.date::date = $2::date AND r.channel = 'pos'
+  ) t
+  ORDER BY date DESC, id DESC
+  LIMIT $3 OFFSET $4
+  `,
       [date, date, limit, offset],
     );
 
     const { rows: totalRows } = await query(
       `
-    SELECT
-      (SELECT COUNT(*) FROM sales_invoices WHERE date::date = $1::date AND channel = 'pos') +
-      (SELECT COUNT(*) FROM sales_returns WHERE date::date = $2::date AND channel = 'pos') AS total
-    `,
+  SELECT
+    (SELECT COUNT(*) FROM sales_invoices WHERE date::date = $1::date AND channel = 'pos') +
+    (SELECT COUNT(*) FROM sales_returns WHERE date::date = $2::date AND channel = 'pos') AS total
+  `,
       [date, date],
     );
     const total = Number(totalRows[0].total);
 
     const { rows: salesStatsRows } = await query(
       `
-    SELECT
-      COUNT(*) AS count,
-      COALESCE(SUM(s.net_total), 0) AS total,
-      COALESCE(SUM(s.tax_value), 0)
-        + COALESCE(SUM(itemAgg.item_tax_total), 0) AS "taxTotal"
-    FROM sales_invoices s
-    LEFT JOIN (
-      SELECT invoice_id, SUM(tax_value) AS item_tax_total
-      FROM sales_invoice_items
-      GROUP BY invoice_id
-    ) itemAgg ON itemAgg.invoice_id = s.id
-    WHERE s.date::date = $1::date AND s.channel = 'pos'
-    `,
+  SELECT
+    COUNT(*)::int AS count,
+    COALESCE(SUM(s.net_total), 0)::float AS total,
+    (COALESCE(SUM(s.tax_value), 0)
+      + COALESCE(SUM(itemAgg.item_tax_total), 0))::float AS "taxTotal"
+  FROM sales_invoices s
+  LEFT JOIN (
+    SELECT invoice_id, SUM(tax_value) AS item_tax_total
+    FROM sales_invoice_items
+    GROUP BY invoice_id
+  ) itemAgg ON itemAgg.invoice_id = s.id
+  WHERE s.date::date = $1::date AND s.channel = 'pos'
+  `,
       [date],
     );
     const salesStats = salesStatsRows[0];
 
     const { rows: returnStatsRows } = await query(
       `
-    SELECT
-      COUNT(*) AS count,
-      COALESCE(SUM(r.net_total), 0) AS total,
-      COALESCE(SUM(r.tax_value), 0)
-        + COALESCE(SUM(itemAgg.item_tax_total), 0) AS "taxTotal"
-    FROM sales_returns r
-    LEFT JOIN (
-      SELECT return_id, SUM(tax_value) AS item_tax_total
-      FROM sales_return_items
-      GROUP BY return_id
-    ) itemAgg ON itemAgg.return_id = r.id
-    WHERE r.date::date = $1::date AND r.channel = 'pos'
-    `,
+  SELECT
+    COUNT(*)::int AS count,
+    COALESCE(SUM(r.net_total), 0)::float AS total,
+    (COALESCE(SUM(r.tax_value), 0)
+      + COALESCE(SUM(itemAgg.item_tax_total), 0))::float AS "taxTotal"
+  FROM sales_returns r
+  LEFT JOIN (
+    SELECT return_id, SUM(tax_value) AS item_tax_total
+    FROM sales_return_items
+    GROUP BY return_id
+  ) itemAgg ON itemAgg.return_id = r.id
+  WHERE r.date::date = $1::date AND r.channel = 'pos'
+  `,
       [date],
     );
     const returnStats = returnStatsRows[0];
 
     const { rows: fundIn } = await query(
       `
-    SELECT
-      f.id AS fund_id,
-      f.name AS fund_name,
-      cur.code AS currency_code,
-      cur.symbol AS currency_symbol,
-      COALESCE(SUM(p.amount), 0) AS amount,
-      COALESCE(SUM(p.amount_fund_currency), 0) AS fund_amount
-    FROM payment_allocations pa
-    JOIN payments p ON p.id = pa.payment_id
-    JOIN funds f ON f.id = p.fund_id
-    JOIN currencies cur ON cur.id = f.currency_id
-    JOIN sales_invoices s ON s.id = pa.invoice_id
-    WHERE pa.invoice_type = 'sales'
-      AND s.date::date = $1::date
-      AND s.channel = 'pos'
-    GROUP BY f.id, f.name, cur.code, cur.symbol
-    ORDER BY amount DESC
-    `,
+  SELECT
+    f.id AS fund_id,
+    f.name AS fund_name,
+    cur.code AS currency_code,
+    cur.symbol AS currency_symbol,
+    COALESCE(SUM(p.amount), 0)::float AS amount,
+    COALESCE(SUM(p.amount_fund_currency), 0)::float AS fund_amount
+  FROM payment_allocations pa
+  JOIN payments p ON p.id = pa.payment_id
+  JOIN funds f ON f.id = p.fund_id
+  JOIN currencies cur ON cur.id = f.currency_id
+  JOIN sales_invoices s ON s.id = pa.invoice_id
+  WHERE pa.invoice_type = 'sales'
+    AND s.date::date = $1::date
+    AND s.channel = 'pos'
+  GROUP BY f.id, f.name, cur.code, cur.symbol
+  ORDER BY amount DESC
+  `,
       [date],
     );
 
     const { rows: fundOut } = await query(
       `
-    SELECT
-      f.id AS fund_id,
-      f.name AS fund_name,
-      cur.code AS currency_code,
-      cur.symbol AS currency_symbol,
-      COALESCE(SUM(p.amount), 0) AS amount,
-      COALESCE(SUM(p.amount_fund_currency), 0) AS fund_amount
-    FROM payment_allocations pa
-    JOIN payments p ON p.id = pa.payment_id
-    JOIN funds f ON f.id = p.fund_id
-    JOIN currencies cur ON cur.id = f.currency_id
-    JOIN sales_returns r ON r.id = pa.invoice_id
-    WHERE pa.invoice_type = 'sales_return'
-      AND r.date::date = $1::date
-      AND r.channel = 'pos'
-    GROUP BY f.id, f.name, cur.code, cur.symbol
-    ORDER BY amount DESC
-    `,
+  SELECT
+    f.id AS fund_id,
+    f.name AS fund_name,
+    cur.code AS currency_code,
+    cur.symbol AS currency_symbol,
+    COALESCE(SUM(p.amount), 0)::float AS amount,
+    COALESCE(SUM(p.amount_fund_currency), 0)::float AS fund_amount
+  FROM payment_allocations pa
+  JOIN payments p ON p.id = pa.payment_id
+  JOIN funds f ON f.id = p.fund_id
+  JOIN currencies cur ON cur.id = f.currency_id
+  JOIN sales_returns r ON r.id = pa.invoice_id
+  WHERE pa.invoice_type = 'sales_return'
+    AND r.date::date = $1::date
+    AND r.channel = 'pos'
+  GROUP BY f.id, f.name, cur.code, cur.symbol
+  ORDER BY amount DESC
+  `,
       [date],
     );
 
@@ -1725,21 +1745,21 @@ export default function registerSalesInvoiceIPC() {
       const placeholders = ids.map((_, i) => `$${i + 2}`).join(",");
       const { rows } = await query(
         `
-      SELECT
-        pa.invoice_id,
-        f.id AS fund_id,
-        f.name AS fund_name,
-        cur.code AS currency_code,
-        cur.symbol AS currency_symbol,
-        COALESCE(SUM(p.amount), 0) AS amount,
-        COALESCE(SUM(p.amount_fund_currency), 0) AS fund_amount
-      FROM payment_allocations pa
-      JOIN payments p ON p.id = pa.payment_id
-      JOIN funds f ON f.id = p.fund_id
-      JOIN currencies cur ON cur.id = f.currency_id
-      WHERE pa.invoice_type = $1 AND pa.invoice_id IN (${placeholders})
-      GROUP BY pa.invoice_id, f.id, f.name, cur.code, cur.symbol
-      `,
+    SELECT
+      pa.invoice_id,
+      f.id AS fund_id,
+      f.name AS fund_name,
+      cur.code AS currency_code,
+      cur.symbol AS currency_symbol,
+      COALESCE(SUM(p.amount), 0)::float AS amount,
+      COALESCE(SUM(p.amount_fund_currency), 0)::float AS fund_amount
+    FROM payment_allocations pa
+    JOIN payments p ON p.id = pa.payment_id
+    JOIN funds f ON f.id = p.fund_id
+    JOIN currencies cur ON cur.id = f.currency_id
+    WHERE pa.invoice_type = $1 AND pa.invoice_id IN (${placeholders})
+    GROUP BY pa.invoice_id, f.id, f.name, cur.code, cur.symbol
+    `,
         [invoiceType, ...ids],
       );
       return rows;

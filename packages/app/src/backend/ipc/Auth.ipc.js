@@ -54,7 +54,7 @@ export default function registerAuthHandlersIPC() {
   ipcMain.handle("auth:get-users", async () => {
     try {
       const { rows: users } = await query(
-        "SELECT id, username, role, full_name, is_active, created_at FROM users ORDER BY created_at ASC",
+        "SELECT id, username, role, full_name, is_active, created_at::text AS created_at FROM users ORDER BY created_at ASC",
       );
       return { success: true, users };
     } catch (err) {
@@ -109,7 +109,11 @@ export default function registerAuthHandlersIPC() {
 
       // Guard: can't deactivate the last active admin
       const nextRole = data.role ?? current.role;
-      const nextIsActive = data.is_active ?? current.is_active;
+      const requestedIsActive =
+        data.is_active === undefined || data.is_active === null
+          ? null
+          : Boolean(Number(data.is_active));
+      const nextIsActive = requestedIsActive ?? current.is_active;
       const wasActiveAdmin = current.role === "admin" && current.is_active;
       const willBeActiveAdmin = nextRole === "admin" && nextIsActive;
 
@@ -134,7 +138,7 @@ export default function registerAuthHandlersIPC() {
           data.username ?? null,
           data.full_name ?? null,
           data.role ?? null,
-          data.is_active ?? null,
+          requestedIsActive,
           data.id,
         ],
       );
@@ -260,7 +264,7 @@ export default function registerAuthHandlersIPC() {
   ipcMain.handle("auth:get-pin-reset-audit", async () => {
     try {
       const { rows: records } = await query(
-        `SELECT a.id, a.performed_at, a.device, a.reset_type,
+        `SELECT a.id, a.performed_at::text AS performed_at, a.device, a.reset_type,
           administrator.username AS administrator,
           target.username AS target_user
          FROM pin_reset_audit a

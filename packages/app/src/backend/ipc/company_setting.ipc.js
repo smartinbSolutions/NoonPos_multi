@@ -52,6 +52,12 @@ async function getModuleStats(
     `,
   );
 
+  const trendFormatted = trend.map((r) => {
+    const d = new Date(r.day);
+    const day = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
+    return { day, total: Number(r.total) };
+  });
+
   const { rows: statusRows } = await query(
     `
     SELECT
@@ -100,7 +106,7 @@ async function getModuleStats(
     total,
     today,
     count,
-    trend: trend.map((r) => ({ day: r.day, total: Number(r.total) })),
+    trend: trendFormatted,
     paid: Number(statusBreakdown?.paid || 0),
     partial: Number(statusBreakdown?.partial || 0),
     unpaid: Number(statusBreakdown?.unpaid || 0),
@@ -185,7 +191,7 @@ async function getFundBalances(query) {
       f.name,
       c.code AS currency_code,
       c.symbol AS currency_symbol,
-      c.exchange_rate AS exchange_rate,
+      c.exchange_rate::float AS exchange_rate,
       c.is_primary AS is_primary,
       COALESCE(SUM(
         CASE WHEN fh.movement_type = 'in' THEN fh.amount ELSE -fh.amount END
@@ -210,7 +216,7 @@ async function getTopExpenseCategories(query, limit = 5) {
       COALESCE(SUM(ei.price), 0) AS total_spent,
       COUNT(ei.id) AS items_count
     FROM expense_items ei
-    LEFT JOIN expence_category ec ON ec.id = ei.category_id
+    LEFT JOIN expense_category ec ON ec.id = ei.category_id
     GROUP BY ec.id, ei.category_id
     ORDER BY total_spent DESC
     LIMIT $1
@@ -229,7 +235,13 @@ async function getTopExpenseCategories(query, limit = 5) {
 
 export default function registerCompanySettingsIPC() {
   ipcMain.handle("get-company-settings", async () => {
-    const { rows } = await query("SELECT * FROM company_settings LIMIT 1");
+    const { rows } = await query(
+      `SELECT *,
+      created_at::text AS created_at,
+      updated_at::text AS updated_at,
+      minimum_stock::float AS minimum_stock
+    FROM company_settings LIMIT 1`,
+    );
     const settings = rows[0];
 
     if (!settings) {
@@ -237,10 +249,10 @@ export default function registerCompanySettingsIPC() {
     }
 
     const { rows: defaultPosTaxes } = await query(
-      `SELECT cdpt.tax_id, t.name, t.rate
-       FROM company_default_pos_taxes cdpt
-       JOIN taxes t ON t.id = cdpt.tax_id
-       ORDER BY cdpt.id ASC`,
+      `SELECT cdpt.tax_id, t.name, t.rate::float AS rate
+     FROM company_default_pos_taxes cdpt
+     JOIN taxes t ON t.id = cdpt.tax_id
+     ORDER BY cdpt.id ASC`,
     );
 
     return {
@@ -463,9 +475,9 @@ export default function registerCompanySettingsIPC() {
     const inventoryValue = Number(inventoryRows[0]?.value || 0);
 
     const { rows: minStockRows } = await query(
-      `SELECT minimum_stock FROM company_settings LIMIT 1`,
+      `SELECT minimum_stock::float AS minimum_stock FROM company_settings LIMIT 1`,
     );
-    const minimumStock = minStockRows[0]?.minimum_stock ?? 5;
+    const minimumStock = Number(minStockRows[0]?.minimum_stock ?? 5);
 
     const isInventoryLow = minimumStock > 0 && inventoryValue < minimumStock;
 

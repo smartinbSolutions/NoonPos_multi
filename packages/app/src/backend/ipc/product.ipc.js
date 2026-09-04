@@ -316,46 +316,49 @@ export default function registerProductIPC() {
 
     const { rows } = await query(
       `SELECT
-        products.*,
-        products.type AS type,
-        unit.name AS unit_name,
-        unit.code AS unit_code,
-        taxes.name AS tax_name,
-        taxes.rate AS tax_rate,
-        (
-          SELECT sale_price FROM product_units
-          WHERE product_units.product_id = products.id AND product_units.is_base = true
-          LIMIT 1
-        ) AS "salePrice",
-        (
-          SELECT COUNT(*) FROM product_units
-          WHERE product_units.product_id = products.id AND product_units.is_base = false
-        ) AS "unitCount",
-        (
-          SELECT json_agg(
-            json_build_object(
-              'id', pu.id,
-              'unit_name', pu.unit_name,
-              'conversion_factor', pu.conversion_factor,
-              'is_base', pu.is_base,
-              'sale_price', pu.sale_price,
-              'barcode', pu.barcode
-            )
+      products.*,
+      products.created_at::text AS created_at,
+      products.cost_price::float AS cost_price,
+      products.quantity::float AS quantity,
+      products.type AS type,
+      unit.name AS unit_name,
+      unit.code AS unit_code,
+      taxes.name AS tax_name,
+      taxes.rate::float AS tax_rate,
+      (
+        SELECT sale_price::float FROM product_units
+        WHERE product_units.product_id = products.id AND product_units.is_base = true
+        LIMIT 1
+      ) AS "salePrice",
+      (
+        SELECT COUNT(*)::int FROM product_units
+        WHERE product_units.product_id = products.id AND product_units.is_base = false
+      ) AS "unitCount",
+      (
+        SELECT json_agg(
+          json_build_object(
+            'id', pu.id,
+            'unit_name', pu.unit_name,
+            'conversion_factor', pu.conversion_factor,
+            'is_base', pu.is_base,
+            'sale_price', pu.sale_price,
+            'barcode', pu.barcode
           )
-          FROM product_units pu
-          WHERE pu.product_id = products.id
-        ) AS "productUnits"
+        )
+        FROM product_units pu
+        WHERE pu.product_id = products.id
+      ) AS "productUnits"
 
-      FROM products
+    FROM products
 
-      LEFT JOIN unit ON unit.id = products.unit_id
-      LEFT JOIN taxes ON taxes.id = products.tax_id
+    LEFT JOIN unit ON unit.id = products.unit_id
+    LEFT JOIN taxes ON taxes.id = products.tax_id
 
-      ${whereClause}
+    ${whereClause}
 
-      ORDER BY products.id DESC
+    ORDER BY products.id DESC
 
-      LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`,
+    LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`,
       [...queryParams, limit, offset],
     );
 
@@ -366,9 +369,9 @@ export default function registerProductIPC() {
 
     const { rows: totalRows } = await query(
       `SELECT COUNT(*) AS total
-       FROM products
-       LEFT JOIN unit ON unit.id = products.unit_id
-       ${whereClause}`,
+     FROM products
+     LEFT JOIN unit ON unit.id = products.unit_id
+     ${whereClause}`,
       queryParams,
     );
     const total = Number(totalRows[0].total);
@@ -385,16 +388,19 @@ export default function registerProductIPC() {
   ipcMain.handle("get-product", async (event, id) => {
     const { rows: productRows } = await query(
       `SELECT
-        products.*,
-        products.type AS type,
-        unit.name as unit_name,
-        unit.code as unit_code,
-        taxes.name as tax_name,
-        taxes.rate as tax_rate
-      FROM products
-      LEFT JOIN unit ON unit.id = products.unit_id
-      LEFT JOIN taxes ON taxes.id = products.tax_id
-      WHERE products.id = $1`,
+      products.*,
+      products.created_at::text AS created_at,
+      products.cost_price::float AS cost_price,
+      products.quantity::float AS quantity,
+      products.type AS type,
+      unit.name as unit_name,
+      unit.code as unit_code,
+      taxes.name as tax_name,
+      taxes.rate::float as tax_rate
+    FROM products
+    LEFT JOIN unit ON unit.id = products.unit_id
+    LEFT JOIN taxes ON taxes.id = products.tax_id
+    WHERE products.id = $1`,
       [id],
     );
     const product = productRows[0];
@@ -402,10 +408,10 @@ export default function registerProductIPC() {
     if (!product) return null;
 
     const { rows: productUnits } = await query(
-      `SELECT id, unit_name, conversion_factor, is_base, sale_price, barcode
-       FROM product_units
-       WHERE product_id = $1
-       ORDER BY is_base DESC, id ASC`,
+      `SELECT id, unit_name, conversion_factor::float AS conversion_factor, is_base, sale_price::float AS sale_price, barcode
+     FROM product_units
+     WHERE product_id = $1
+     ORDER BY is_base DESC, id ASC`,
       [id],
     );
 
@@ -434,24 +440,24 @@ export default function registerProductIPC() {
     if (search) {
       const { rows: unitMatchRows } = await query(
         `SELECT
-          products.id AS product_id,
-          products.name,
-          products.logo,
-          products.quantity,
-          products.type,
-          pu.id AS unit_id,
-          pu.unit_name,
-          pu.conversion_factor,
-          pu.sale_price,
-          pu.is_base,
-          taxes.id AS tax_id,
-          taxes.rate AS tax_rate
-        FROM product_units pu
-        JOIN products ON products.id = pu.product_id
-        LEFT JOIN taxes
-          ON taxes.id = products.tax_id
-          AND taxes.category IN ('product', 'both')
-        WHERE pu.barcode = $1`,
+        products.id AS product_id,
+        products.name,
+        products.logo,
+        products.quantity::float AS quantity,
+        products.type,
+        pu.id AS unit_id,
+        pu.unit_name,
+        pu.conversion_factor::float AS conversion_factor,
+        pu.sale_price::float AS sale_price,
+        pu.is_base,
+        taxes.id AS tax_id,
+        taxes.rate::float AS tax_rate
+      FROM product_units pu
+      JOIN products ON products.id = pu.product_id
+      LEFT JOIN taxes
+        ON taxes.id = products.tax_id
+        AND taxes.category IN ('product', 'both')
+      WHERE pu.barcode = $1`,
         [search],
       );
       let barcodeMatch = unitMatchRows[0];
@@ -459,26 +465,26 @@ export default function registerProductIPC() {
       if (!barcodeMatch) {
         const { rows: baseMatchRows } = await query(
           `SELECT
-            products.id AS product_id,
-            products.name,
-            products.logo,
-            products.quantity,
-            products.type,
-            pu.id AS unit_id,
-            pu.unit_name,
-            pu.conversion_factor,
-            pu.sale_price,
-            true AS is_base,
-            taxes.id AS tax_id,
-            taxes.rate AS tax_rate
-          FROM product_barcodes pb
-          JOIN products ON products.id = pb.product_id
-          LEFT JOIN product_units pu
-            ON pu.product_id = products.id AND pu.is_base = true
-          LEFT JOIN taxes
-            ON taxes.id = products.tax_id
-            AND taxes.category IN ('product', 'both')
-          WHERE pb.barcode = $1`,
+          products.id AS product_id,
+          products.name,
+          products.logo,
+          products.quantity::float AS quantity,
+          products.type,
+          pu.id AS unit_id,
+          pu.unit_name,
+          pu.conversion_factor::float AS conversion_factor,
+          pu.sale_price::float AS sale_price,
+          true AS is_base,
+          taxes.id AS tax_id,
+          taxes.rate::float AS tax_rate
+        FROM product_barcodes pb
+        JOIN products ON products.id = pb.product_id
+        LEFT JOIN product_units pu
+          ON pu.product_id = products.id AND pu.is_base = true
+        LEFT JOIN taxes
+          ON taxes.id = products.tax_id
+          AND taxes.category IN ('product', 'both')
+        WHERE pb.barcode = $1`,
           [search],
         );
         barcodeMatch = baseMatchRows[0];
@@ -542,20 +548,20 @@ export default function registerProductIPC() {
 
     const { rows: products } = await query(
       `SELECT
-        products.id,
-        products.name,
-        products.logo,
-        products.quantity,
-        products.type,
-        taxes.id AS tax_id,
-        taxes.rate AS tax_rate
-      FROM products
-      LEFT JOIN taxes
-        ON taxes.id = products.tax_id
-        AND taxes.category IN ('product', 'both')
-      ${whereClause}
-      ORDER BY products.id DESC
-      LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`,
+      products.id,
+      products.name,
+      products.logo,
+      products.quantity::float AS quantity,
+      products.type,
+      taxes.id AS tax_id,
+      taxes.rate::float AS tax_rate
+    FROM products
+    LEFT JOIN taxes
+      ON taxes.id = products.tax_id
+      AND taxes.category IN ('product', 'both')
+    ${whereClause}
+    ORDER BY products.id DESC
+    LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`,
       [...queryParams, limit, offset],
     );
 
@@ -579,10 +585,10 @@ export default function registerProductIPC() {
     const idPlaceholders = productIds.map((_, i) => `$${i + 1}`).join(",");
 
     const { rows: units } = await query(
-      `SELECT id, product_id, unit_name, conversion_factor, is_base, sale_price, barcode
-       FROM product_units
-       WHERE product_id IN (${idPlaceholders})
-       ORDER BY product_id ASC, is_base DESC, id ASC`,
+      `SELECT id, product_id, unit_name, conversion_factor::float AS conversion_factor, is_base, sale_price::float AS sale_price, barcode
+     FROM product_units
+     WHERE product_id IN (${idPlaceholders})
+     ORDER BY product_id ASC, is_base DESC, id ASC`,
       productIds,
     );
 
@@ -596,9 +602,9 @@ export default function registerProductIPC() {
 
     const { rows: productBarcodeRows } = await query(
       `SELECT product_id, barcode
-       FROM product_barcodes
-       WHERE product_id IN (${idPlaceholders})
-       ORDER BY product_id ASC, id ASC`,
+     FROM product_barcodes
+     WHERE product_id IN (${idPlaceholders})
+     ORDER BY product_id ASC, id ASC`,
       productIds,
     );
 
@@ -719,20 +725,21 @@ export default function registerProductIPC() {
   ipcMain.handle("get-product-by-barcode", async (event, barcode) => {
     const { rows: unitMatchRows } = await query(
       `SELECT
-        p.*,
-        pu.id AS unit_id,
-        pu.unit_name AS unit_name,
-        pu.conversion_factor AS conversion_factor,
-        pu.sale_price AS price,
-        pu.is_base AS is_base,
-        taxes.id AS tax_id,
-        taxes.rate AS tax_rate
-      FROM product_units pu
-      JOIN products p ON p.id = pu.product_id
-      LEFT JOIN taxes
-        ON taxes.id = p.tax_id
-        AND taxes.category IN ('product', 'both')
-      WHERE pu.barcode = $1`,
+      p.*,
+      p.quantity::float AS quantity,
+      pu.id AS unit_id,
+      pu.unit_name AS unit_name,
+      pu.conversion_factor::float AS conversion_factor,
+      pu.sale_price::float AS price,
+      pu.is_base AS is_base,
+      taxes.id AS tax_id,
+      taxes.rate::float AS tax_rate
+    FROM product_units pu
+    JOIN products p ON p.id = pu.product_id
+    LEFT JOIN taxes
+      ON taxes.id = p.tax_id
+      AND taxes.category IN ('product', 'both')
+    WHERE pu.barcode = $1`,
       [barcode],
     );
     const unitMatch = unitMatchRows[0];
@@ -777,13 +784,13 @@ export default function registerProductIPC() {
     }
 
     const { rows: barcodeRows } = await query(
-      `SELECT p.*, taxes.id AS tax_id, taxes.rate AS tax_rate
-       FROM product_barcodes pb
-       JOIN products p ON p.id = pb.product_id
-       LEFT JOIN taxes
-         ON taxes.id = p.tax_id
-         AND taxes.category IN ('product', 'both')
-       WHERE pb.barcode = $1`,
+      `SELECT p.*, p.quantity::float AS quantity, taxes.id AS tax_id, taxes.rate::float AS tax_rate
+     FROM product_barcodes pb
+     JOIN products p ON p.id = pb.product_id
+     LEFT JOIN taxes
+       ON taxes.id = p.tax_id
+       AND taxes.category IN ('product', 'both')
+     WHERE pb.barcode = $1`,
       [barcode],
     );
     const row = barcodeRows[0];
@@ -793,10 +800,10 @@ export default function registerProductIPC() {
     const isService = row.type === "service";
 
     const { rows: baseUnitRows } = await query(
-      `SELECT id, unit_name, conversion_factor, sale_price
-       FROM product_units
-       WHERE product_id = $1 AND is_base = true
-       LIMIT 1`,
+      `SELECT id, unit_name, conversion_factor::float AS conversion_factor, sale_price::float AS sale_price
+     FROM product_units
+     WHERE product_id = $1 AND is_base = true
+     LIMIT 1`,
       [row.id],
     );
     const baseUnit = baseUnitRows[0];
@@ -837,15 +844,21 @@ export default function registerProductIPC() {
 
     const { rows: data } = await query(
       `SELECT
-        product_movements.*,
-        products.name as product_name,
-        unit.code as unit_code
-      FROM product_movements
-      LEFT JOIN products ON products.id = product_movements.product_id
-      LEFT JOIN unit ON unit.id = products.unit_id
-      ${whereClause}
-      ORDER BY product_movements.created_at DESC, product_movements.id DESC
-      LIMIT $${limitParamIndex} OFFSET $${limitParamIndex + 1}`,
+      product_movements.*,
+      product_movements.date::text AS date,
+      product_movements.created_at::text AS created_at,
+      product_movements.enter_price::float AS enter_price,
+      product_movements.out_price::float AS out_price,
+      product_movements.quantity::float AS quantity,
+      product_movements.conversion_factor::float AS conversion_factor,
+      products.name as product_name,
+      unit.code as unit_code
+    FROM product_movements
+    LEFT JOIN products ON products.id = product_movements.product_id
+    LEFT JOIN unit ON unit.id = products.unit_id
+    ${whereClause}
+    ORDER BY product_movements.created_at DESC, product_movements.id DESC
+    LIMIT $${limitParamIndex} OFFSET $${limitParamIndex + 1}`,
       [...queryParams, limit, offset],
     );
 
@@ -900,7 +913,7 @@ export default function registerProductIPC() {
   ipcMain.handle("get-product-imports", async () => {
     try {
       const { rows: imports } = await query(
-        "SELECT * FROM product_imports ORDER BY id DESC",
+        "SELECT *, created_at::text AS created_at FROM product_imports ORDER BY id DESC",
       );
 
       const { rows: statsRows } = await query(

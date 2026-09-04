@@ -147,6 +147,7 @@ async function fetchPartyHistoryLedger(
   const { rows } = await queryFn(
     `SELECT
       p.*,
+      p.date::text AS date,
 
       COALESCE(si.invoice_name, pi.invoice_name, ex.invoice_name) AS invoice_name,
 
@@ -260,7 +261,6 @@ export default function registerPartyHistoryIPC() {
       partyType: "supplier",
     });
   });
-
   ipcMain.handle(
     "get-party-earliest-date",
     async (event, { partyId, partyType }) => {
@@ -269,7 +269,7 @@ export default function registerPartyHistoryIPC() {
           return { success: true, minDate: null };
         }
         const { rows } = await query(
-          `SELECT MIN(date) AS "minDate" FROM party_history WHERE party_id = $1 AND party_type = $2`,
+          `SELECT MIN(date)::text AS "minDate" FROM party_history WHERE party_id = $1 AND party_type = $2`,
           [partyId, partyType],
         );
         return { success: true, minDate: rows[0]?.minDate || null };

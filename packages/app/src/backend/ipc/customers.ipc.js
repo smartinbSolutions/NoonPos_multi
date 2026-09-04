@@ -78,29 +78,29 @@ export default function registerCustomersIPC() {
     // inside HAVING in the same query — the expression must be repeated, hence
     // the full CASE expression above rather than "HAVING balance > 0".
     const perCustomerCTE = `
-      SELECT
-        c.id,
-        c.name,
-        c.phone,
-        c.address,
-        c.created_at,
-        COALESCE(SUM(CASE WHEN ph.movement_type = 'increase' THEN ph.amount ELSE 0 END), 0) AS total,
-        COALESCE(SUM(CASE WHEN ph.movement_type = 'decrease' THEN ph.amount ELSE 0 END), 0) AS total_paid,
-        COALESCE(SUM(CASE WHEN ph.movement_type = 'increase' THEN ph.amount ELSE 0 END), 0)
-          - COALESCE(SUM(CASE WHEN ph.movement_type = 'decrease' THEN ph.amount ELSE 0 END), 0) AS balance
-      FROM customers c
-      LEFT JOIN party_history ph
-        ON ph.party_type = 'customer'
-       AND ph.party_id = c.id
-      GROUP BY c.id
-      ${havingClause}
-    `;
+    SELECT
+      c.id,
+      c.name,
+      c.phone,
+      c.address,
+      c.created_at::text AS created_at,
+      COALESCE(SUM(CASE WHEN ph.movement_type = 'increase' THEN ph.amount ELSE 0 END), 0)::float AS total,
+      COALESCE(SUM(CASE WHEN ph.movement_type = 'decrease' THEN ph.amount ELSE 0 END), 0)::float AS total_paid,
+      (COALESCE(SUM(CASE WHEN ph.movement_type = 'increase' THEN ph.amount ELSE 0 END), 0)
+        - COALESCE(SUM(CASE WHEN ph.movement_type = 'decrease' THEN ph.amount ELSE 0 END), 0))::float AS balance
+    FROM customers c
+    LEFT JOIN party_history ph
+      ON ph.party_type = 'customer'
+     AND ph.party_id = c.id
+    GROUP BY c.id
+    ${havingClause}
+  `;
 
     try {
       const { rows: customers } = await query(
         `SELECT * FROM (${perCustomerCTE}) sub
-         ORDER BY created_at DESC, id DESC
-         LIMIT $1 OFFSET $2`,
+       ORDER BY created_at DESC, id DESC
+       LIMIT $1 OFFSET $2`,
         [limit, offset],
       );
 
@@ -112,11 +112,11 @@ export default function registerCustomersIPC() {
       // Cross-page aggregates for the currently applied filter — not just this page.
       const { rows: statsRows } = await query(
         `SELECT
-          COUNT(*) AS count,
-          COALESCE(SUM(total), 0) AS "totalPayable",
-          COALESCE(SUM(total_paid), 0) AS "totalPaid",
-          COALESCE(SUM(CASE WHEN balance > 0 THEN balance ELSE 0 END), 0) AS "netOutstanding"
-        FROM (${perCustomerCTE}) sub`,
+        COUNT(*) AS count,
+        COALESCE(SUM(total), 0)::float AS "totalPayable",
+        COALESCE(SUM(total_paid), 0)::float AS "totalPaid",
+        COALESCE(SUM(CASE WHEN balance > 0 THEN balance ELSE 0 END), 0)::float AS "netOutstanding"
+      FROM (${perCustomerCTE}) sub`,
       );
       const stats = statsRows[0];
 
@@ -124,10 +124,10 @@ export default function registerCustomersIPC() {
       const unfilteredCTE = perCustomerCTE.replace(havingClause, "");
       const { rows: countsRows } = await query(
         `SELECT
-          COUNT(*) AS all_count,
-          SUM(CASE WHEN balance > 0 THEN 1 ELSE 0 END) AS owing_count,
-          SUM(CASE WHEN balance <= 0 THEN 1 ELSE 0 END) AS settled_count
-        FROM (${unfilteredCTE}) sub`,
+        COUNT(*) AS all_count,
+        SUM(CASE WHEN balance > 0 THEN 1 ELSE 0 END) AS owing_count,
+        SUM(CASE WHEN balance <= 0 THEN 1 ELSE 0 END) AS settled_count
+      FROM (${unfilteredCTE}) sub`,
       );
       const counts = countsRows[0];
 
@@ -154,38 +154,39 @@ export default function registerCustomersIPC() {
     try {
       const { rows } = await query(
         `SELECT
-          c.*,
+        c.*,
+        c.created_at::text AS created_at,
 
-          COALESCE(
-            SUM(CASE WHEN ph.movement_type = 'increase' THEN ph.amount ELSE 0 END),
-            0
-          ) AS total,
+        COALESCE(
+          SUM(CASE WHEN ph.movement_type = 'increase' THEN ph.amount ELSE 0 END),
+          0
+        )::float AS total,
 
-          COALESCE(
-            SUM(CASE WHEN ph.movement_type = 'decrease' THEN ph.amount ELSE 0 END),
-            0
-          ) AS total_paid,
+        COALESCE(
+          SUM(CASE WHEN ph.movement_type = 'decrease' THEN ph.amount ELSE 0 END),
+          0
+        )::float AS total_paid,
 
-          COALESCE(
-            SUM(
-              CASE
-                WHEN ph.movement_type = 'increase' THEN ph.amount
-                WHEN ph.movement_type = 'decrease' THEN -ph.amount
-                ELSE 0
-              END
-            ),
-            0
-          ) AS balance
+        COALESCE(
+          SUM(
+            CASE
+              WHEN ph.movement_type = 'increase' THEN ph.amount
+              WHEN ph.movement_type = 'decrease' THEN -ph.amount
+              ELSE 0
+            END
+          ),
+          0
+        )::float AS balance
 
-        FROM customers c
+      FROM customers c
 
-        LEFT JOIN party_history ph
-          ON ph.party_type = 'customer'
-         AND ph.party_id = c.id
+      LEFT JOIN party_history ph
+        ON ph.party_type = 'customer'
+       AND ph.party_id = c.id
 
-        WHERE c.id = $1
+      WHERE c.id = $1
 
-        GROUP BY c.id`,
+      GROUP BY c.id`,
         [id],
       );
 

@@ -240,7 +240,7 @@ export async function printReceiptHtml(html, printerName) {
   let deviceName = printerName;
   if (!deviceName || !printerNames.includes(deviceName)) {
     console.warn(
-      `Requested printer "${deviceName}" not found, falling back to default.`
+      `Requested printer "${deviceName}" not found, falling back to default.`,
     );
     deviceName = undefined;
   }
@@ -258,7 +258,7 @@ export async function printReceiptHtml(html, printerName) {
         if (!success) console.error("Print failed:", errorType);
         win.close();
         resolve(success);
-      }
+      },
     );
   });
 }
