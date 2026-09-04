@@ -8,6 +8,8 @@ import AddPayment from "../../Cash/Payment/components/AddPayment";
 import ContactListHeader from "../../../Global/Contactlistheader";
 import Pagination from "../../../Global/Pagination";
 import { ToastContainer } from "react-toastify";
+import TagList from "../../Tags/components/TagList";
+import TagPickerField from "../../Tags/components/TagPickerField";
 
 // dir="ltr" font-mono tabular-nums wrapper, per the app's RTL-number convention.
 // TODO: swap for the shared <Num> component if you'd rather keep one source of truth.
@@ -53,7 +55,7 @@ const BalanceCell = ({ total, paid, balance, money, t }) => {
   const isSettled = balance <= 0;
 
   return (
-    <div className="flex flex-col items-end gap-1">
+    <div className="flex flex-col items-center gap-1">
       <div className="flex items-center gap-2">
         <span
           className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
@@ -120,6 +122,7 @@ export const CustomerList = () => {
     totalPages,
     balanceFilter,
     setBalanceFilter,
+    tagsByCustomer,
   } = useCustomerList();
 
   const { money } = usePrimaryCurrency();
@@ -138,7 +141,7 @@ export const CustomerList = () => {
   const filteredCustomer = (customers || []).filter((s) =>
     `${s.name} ${s.phone} ${s.address} ${s.total} ${s.total_paid}`
       .toLowerCase()
-      .includes(search.toLowerCase())
+      .includes(search.toLowerCase()),
   );
 
   const filterChipClass = (key) =>
@@ -189,6 +192,7 @@ export const CustomerList = () => {
             actionError={actionError}
             submitLabel={t("screens.contacts.addCustomer")}
             t={t}
+            type="customer"
           />
 
           <div className="flex items-center gap-2 border-b border-[#eef1ff] px-5 py-3">
@@ -218,14 +222,17 @@ export const CustomerList = () => {
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[760px] text-start text-sm">
+              <table className="w-full min-w-[760px] text-center text-sm">
                 <thead className="bg-[#f8faff] text-xs font-bold uppercase  text-slate-500">
                   <tr>
-                    <th className="px-5 py-4 text-start">{t("ui.name")}</th>
-                    <th className="px-5 py-4 text-start">{t("ui.phone")}</th>
-                    <th className="px-5 py-4 text-start">{t("ui.address")}</th>
-                    <th className="px-5 py-4 text-end">{t("ui.balance")}</th>
-                    <th className="px-5 py-4 text-start">
+                    <th className="px-5 py-4 text-center">{t("ui.name")}</th>
+                    <th className="px-5 py-4 text-center">{t("ui.phone")}</th>
+                    <th className="px-5 py-4 text-center">{t("ui.address")}</th>
+                    <th className="px-5 py-4 text-center">{t("ui.balance")}</th>
+                    <th className="px-5 py-4 text-center">
+                      {t("screens.tags.title") || "Tags"}
+                    </th>
+                    <th className="px-5 py-4 text-center">
                       {t("common.actions")}
                     </th>
                   </tr>
@@ -283,12 +290,23 @@ export const CustomerList = () => {
                               placeholder={t("ui.address")}
                             />
                           </td>
-                          <td className="px-5 py-3 text-end">
+                          <td className="px-5 py-3 text-center">
                             <span className="text-xs font-medium text-slate-400">
                               {t(
-                                "screens.contacts.balanceLockedWhileEditing"
+                                "screens.contacts.balanceLockedWhileEditing",
                               ) || "Balance unchanged"}
                             </span>
+                          </td>
+                          <td className="px-5 py-3">
+                            <TagPickerField
+                              scope="customer"
+                              entityType="customer"
+                              entityId={customer.id}
+                              selectedIds={editing.tagIds || []}
+                              onChange={(ids) =>
+                                setEditing({ ...editing, tagIds: ids })
+                              }
+                            />
                           </td>
                           <td className="px-5 py-3">
                             <form
@@ -333,7 +351,7 @@ export const CustomerList = () => {
                         <td className="px-5 py-3 max-w-[200px] truncate text-slate-500">
                           {customer.address || t("ui.noAddress")}
                         </td>
-                        <td className="px-5 py-3 text-end">
+                        <td className="px-5 py-3 text-center">
                           <BalanceCell
                             total={sales}
                             paid={paid}
@@ -343,7 +361,13 @@ export const CustomerList = () => {
                           />
                         </td>
                         <td className="px-5 py-3">
-                          <div className="flex justify-start gap-1">
+                          <TagList
+                            tags={tagsByCustomer[customer.id] || []}
+                            limit={2}
+                          />
+                        </td>
+                        <td className="px-5 py-3">
+                          <div className="flex justify-center gap-1">
                             <button
                               onClick={() =>
                                 navigate(`/payment/customer/${customer.id}`)

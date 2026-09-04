@@ -1,9 +1,15 @@
+import { useEffect, useRef, useState } from "react";
 import { normalizeDigits } from "./FormatNumber";
 
 // Unified numeric input for the whole app. Handles Arabic-Indic digit
 // normalization, safe in-progress decimal typing (doesn't collapse "5." or
-// "0.5" mid-keystroke), and clamps/cleans the value only on blur — not on
-// every keystroke, which is what caused the original decimal-typing bug.
+// "0.5" mid-keystroke), and clamps/cleans the value only on blur.
+//
+// Key fix: while the input is focused, its displayed value is driven ONLY
+// by internal `raw` state — never by the external `value` prop. This means
+// no parent re-render (even one that eagerly coerces to Number and loses a
+// trailing ".") can ever clobber what the user is actively typing. The
+// external value is only re-synced in once the input loses focus.
 //
 // Props:
 //   value        - current value (string or number, controlled)
@@ -22,26 +28,48 @@ export default function NumberInput({
   ...rest
 }) {
   const pattern = allowDecimal ? /^\d*\.?\d*$/ : /^\d*$/;
+  const isFocused = useRef(false);
+
+  const [raw, setRaw] = useState(
+    value === null || value === undefined ? "" : String(value),
+  );
+
+  useEffect(() => {
+    if (isFocused.current) return; // never overwrite active typing
+    setRaw(value === null || value === undefined ? "" : String(value));
+  }, [value]);
+
+  const handleFocus = () => {
+    isFocused.current = true;
+  };
 
   const handleChange = (e) => {
     const normalized = normalizeDigits(e.target.value);
     if (normalized === "" || pattern.test(normalized)) {
+      setRaw(normalized);
       onChange(normalized);
     }
   };
 
   const handleBlur = () => {
-    if (value === "" || value === null || value === undefined) {
+    isFocused.current = false;
+
+    if (raw === "") {
       onChange("");
       return;
     }
-    let num = Number(value);
+
+    let num = Number(raw);
     if (isNaN(num)) {
+      setRaw("");
       onChange("");
       return;
     }
+
     if (min !== null) num = Math.max(min, num);
     if (max !== null) num = Math.min(max, num);
+
+    setRaw(String(num));
     onChange(num);
   };
 
@@ -50,7 +78,8 @@ export default function NumberInput({
       type="text"
       inputMode={allowDecimal ? "decimal" : "numeric"}
       dir="ltr"
-      value={value}
+      value={raw}
+      onFocus={handleFocus}
       onChange={handleChange}
       onBlur={handleBlur}
       {...rest}

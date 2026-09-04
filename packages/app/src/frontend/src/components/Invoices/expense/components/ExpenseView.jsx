@@ -6,6 +6,7 @@ import {
   Download,
   Printer,
   StickyNote,
+  Tag,
 } from "lucide-react";
 
 import { useParams } from "react-router-dom";
@@ -14,6 +15,7 @@ import { useTranslation } from "react-i18next";
 import GoTo from "../../../../Global/GoTo";
 import HoverTooltip from "../../../../Global/HoverTooltip";
 import BackButton from "../../../../Global/BackButton";
+import TagList from "../../../Tags/components/TagList";
 
 const STATUS_CONFIG = {
   paid: { bg: "bg-green-100", text: "text-green-700" },
@@ -27,6 +29,8 @@ export default function ExpenseView() {
 
   const api = window.api;
   const { money } = usePrimaryCurrency();
+
+  const [tags, setTags] = useState([]);
 
   const [expense, setExpense] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -53,7 +57,7 @@ export default function ExpenseView() {
       setIsSavingPdf(true);
       const res = await window.api.saveDocumentPdf(
         `/print-expense/${id}`,
-        `expense-${id}.pdf`
+        `expense-${id}.pdf`,
       );
       if (!res.success && res.error !== "CANCELED") console.error(res.error);
     } catch (err) {
@@ -71,6 +75,13 @@ export default function ExpenseView() {
         setLoading(true);
         const res = await api.getExpense(id);
         if (!cancelled) setExpense(res);
+
+        if (res && !cancelled) {
+          const tagsRes = await api.getEntityTags("expense", Number(id));
+          if (tagsRes.success && !cancelled) {
+            setTags(tagsRes.data);
+          }
+        }
       } catch (err) {
         if (!cancelled) setError(err.message);
       } finally {
@@ -84,7 +95,6 @@ export default function ExpenseView() {
       cancelled = true;
     };
   }, [id]);
-
   const formatDate = (value) => {
     if (!value) return "-";
     const date = new Date(value);
@@ -106,11 +116,11 @@ export default function ExpenseView() {
 
   const itemTaxTotal = items.reduce(
     (sum, item) => sum + Number(item.taxValue || 0),
-    0
+    0,
   );
   const itemDiscountTotal = items.reduce(
     (sum, item) => sum + Number(item.discount || 0),
-    0
+    0,
   );
   const invoiceDiscount = Number(expense?.discount || 0);
   const invoiceTaxValue = Number(expense?.taxValue || 0);
@@ -218,7 +228,12 @@ export default function ExpenseView() {
                 </p>
               </div>
             )}
-
+            {tags.length > 0 && (
+              <div className="mb-6 flex items-center gap-2 rounded-2xl border border-[#e5ebff] bg-white p-4 print:hidden">
+                <Tag size={16} className="shrink-0 text-slate-400" />
+                <TagList tags={tags} limit={6} />
+              </div>
+            )}
             <div className="overflow-x-auto rounded-2xl border border-[#e5ebff]">
               <table className="w-full min-w-[720px] text-sm">
                 <thead className="bg-[#f8faff] text-xs font-bold uppercase text-slate-500">

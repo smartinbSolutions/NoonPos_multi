@@ -12,6 +12,7 @@ const DEFAULT_FILTERS = {
   minTotal: "",
   maxTotal: "",
   taxIds: [],
+  tagIds: [],
 };
 
 const useSalesList = () => {
@@ -65,6 +66,7 @@ const useSalesList = () => {
         minTotal: filters.minTotal !== "" ? filters.minTotal : undefined,
         maxTotal: filters.maxTotal !== "" ? filters.maxTotal : undefined,
         taxIds: filters.taxIds?.length ? filters.taxIds : undefined,
+        tagIds: filters.tagIds?.length ? filters.tagIds : undefined,
       });
 
       setSalesInvoices(res?.data || []);
@@ -100,6 +102,29 @@ const useSalesList = () => {
       .catch(() => setTaxes([]));
   }, [api]);
 
+  // Tags
+  const [allTags, setAllTags] = useState([]);
+  const [tagsByInvoice, setTagsByInvoice] = useState({});
+
+  useEffect(() => {
+    if (!api?.listTags) return;
+    api
+      .listTags("sales_invoice")
+      .then((res) => setAllTags(res.success ? res.data : []))
+      .catch(() => setAllTags([]));
+  }, [api]);
+
+  useEffect(() => {
+    if (salesInvoices.length === 0) {
+      setTagsByInvoice({});
+      return;
+    }
+    const ids = salesInvoices.map((inv) => inv.id);
+    api.getEntitiesTags("sales_invoice", ids).then((res) => {
+      if (res.success) setTagsByInvoice(res.data);
+    });
+  }, [salesInvoices, api]);
+
   // Maps backend error codes to translated, user-facing messages.
   // Falls back to the raw message (or a generic one) for anything unmapped.
   const getDeleteErrorMessage = (err) => {
@@ -108,19 +133,19 @@ const useSalesList = () => {
     if (code.includes("CANNOT_DELETE_INVOICE_WITH_RETURN")) {
       return t(
         "screens.errors.cannotDeleteInvoiceWithReturn",
-        "This invoice has a return and cannot be deleted."
+        "This invoice has a return and cannot be deleted.",
       );
     }
     if (code.includes("CANNOT_DELETE_PAID_INVOICE")) {
       return t(
         "screens.errors.cannotDeletePaidInvoice",
-        "This invoice has a payment and cannot be deleted."
+        "This invoice has a payment and cannot be deleted.",
       );
     }
     if (code.includes("SALES INVOICE NOT FOUND")) {
       return t(
         "screens.errors.invoiceNotFound",
-        "This invoice no longer exists."
+        "This invoice no longer exists.",
       );
     }
 
@@ -141,7 +166,7 @@ const useSalesList = () => {
       }
 
       toast.success(
-        t("screens.invoices.deletedSuccessfully", "Invoice deleted.")
+        t("screens.invoices.deletedSuccessfully", "Invoice deleted."),
       );
       await refetch();
     } catch (err) {
@@ -178,6 +203,8 @@ const useSalesList = () => {
     clearFilters,
     customers,
     taxes,
+    allTags,
+    tagsByInvoice,
   };
 };
 

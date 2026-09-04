@@ -56,7 +56,7 @@ function toEditableItem(raw, availableUnits) {
   const matchedUnit =
     (availableUnits || []).find((u) => u.unit_name === raw.unit_name) ||
     (availableUnits || []).find(
-      (u) => Number(u.conversion_factor || 1) === factor
+      (u) => Number(u.conversion_factor || 1) === factor,
     ) ||
     (availableUnits || []).find((u) => u.is_base) ||
     null;
@@ -96,6 +96,7 @@ export default function useUpdateSales() {
   const [products, setProducts] = useState([]);
   const [customers, setCustomers] = useState([]);
   const [taxes, setTaxes] = useState([]);
+  const [tagIds, setTagIds] = useState([]);
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -103,7 +104,7 @@ export default function useUpdateSales() {
 
   const setInvoice = (updater) => {
     setInvoiceState((prev) =>
-      typeof updater === "function" ? updater(prev) : { ...prev, ...updater }
+      typeof updater === "function" ? updater(prev) : { ...prev, ...updater },
     );
   };
 
@@ -142,20 +143,25 @@ export default function useUpdateSales() {
         remaining_amount: inv.remaining_amount,
       });
 
+      const tagsRes = await api.getEntityTags("sales_invoice", inv.id);
+      if (tagsRes.success) {
+        setTagIds(tagsRes.data.map((tag) => tag.id));
+      }
+
       const rawItems = inv.items || [];
       const productIds = [...new Set(rawItems.map((i) => i.product_id))];
 
       const fullProducts = await Promise.all(
-        productIds.map((pid) => api.getProduct(pid).catch(() => null))
+        productIds.map((pid) => api.getProduct(pid).catch(() => null)),
       );
       const unitsByProduct = new Map(
-        fullProducts.filter(Boolean).map((p) => [p.id, p.productUnits || []])
+        fullProducts.filter(Boolean).map((p) => [p.id, p.productUnits || []]),
       );
 
       setItems(
         rawItems.map((raw) =>
-          toEditableItem(raw, unitsByProduct.get(raw.product_id))
-        )
+          toEditableItem(raw, unitsByProduct.get(raw.product_id)),
+        ),
       );
 
       setProducts(prodsRes?.data || []);
@@ -260,7 +266,7 @@ export default function useUpdateSales() {
       const copy = [...prev];
       const item = copy[index];
       const selectedUnit = item.available_units?.find(
-        (u) => u.id === Number(unitId)
+        (u) => u.id === Number(unitId),
       );
 
       if (!selectedUnit) return prev;
@@ -283,7 +289,7 @@ export default function useUpdateSales() {
 
   const setItemProduct = (
     index,
-    { id, name, code, price, buyingPrice, tax_id, tax_rate }
+    { id, name, code, price, buyingPrice, tax_id, tax_rate },
   ) => {
     setItems((prev) => {
       const copy = [...prev];
@@ -464,7 +470,7 @@ export default function useUpdateSales() {
 
           setItems((prev) => {
             const existingIndex = prev.findIndex(
-              (i) => Number(i.product_id) === Number(product.id)
+              (i) => Number(i.product_id) === Number(product.id),
             );
 
             if (existingIndex !== -1) {
@@ -663,6 +669,8 @@ export default function useUpdateSales() {
         return { success: false, error: res?.error };
       }
 
+      await api.setEntityTags("sales_invoice", id, tagIds);
+
       navigate("/sales");
       return { success: true };
     } catch (err) {
@@ -685,6 +693,8 @@ export default function useUpdateSales() {
     products,
     customers,
     taxes,
+    tagIds,
+    setTagIds,
     addItem,
     removeItem,
     updateItem,

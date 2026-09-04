@@ -31,3 +31,14 @@ export function clearDbConfig() {
     fs.rmSync(configPath);
   }
 }
+
+// Backup/restore only make sense to run against the local Postgres
+// instance directly — a guest terminal connects to the host's LAN IP,
+// so this machine only counts as the host when the stored config points
+// at itself (localhost), which is exactly what NoonPos-DBSetup.exe
+// writes for the app running on the host machine.
+export function isDbHostMachine() {
+  const config = loadDbConfig();
+  if (!config) return false;
+  return config.host === "127.0.0.1" || config.host === "localhost";
+}

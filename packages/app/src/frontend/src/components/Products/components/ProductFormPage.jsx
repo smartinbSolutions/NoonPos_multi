@@ -11,6 +11,7 @@ import {
   Percent,
   Briefcase,
   Lock,
+  TagIcon,
 } from "lucide-react";
 import { useEffect, useState, useRef } from "react";
 import { useNavigate, useParams } from "react-router-dom";
@@ -20,6 +21,7 @@ import { useTranslation } from "react-i18next";
 import useProductCatalog from "../hooks/useProductCatalog";
 import { normalizeDigits } from "../../../Global/FormatNumber";
 import NumberInput from "../../../Global/NumberInput";
+import TagPickerField from "../../Tags/components/TagPickerField";
 
 // ---- Shared style tokens ----
 const inputClass =
@@ -47,6 +49,10 @@ const accents = {
   barcodes: {
     icon: "bg-amber-50 text-amber-600",
     rule: "bg-amber-500",
+  },
+  tags: {
+    icon: "bg-pink-50 text-pink-600",
+    rule: "bg-pink-500",
   },
 };
 
@@ -139,6 +145,7 @@ export default function ProductFormPage() {
   const [initializing, setInitializing] = useState(isEditing);
   const [submitAttempted, setSubmitAttempted] = useState(false);
   const [form, setForm] = useState(emptyForm);
+  const [tagIds, setTagIds] = useState([]);
 
   const isService = form.type === "service";
   const barcodeInputRefs = useRef([]);
@@ -229,7 +236,7 @@ export default function ProductFormPage() {
     setForm((current) => ({
       ...current,
       barcodes: current.barcodes.map((barcode, currentIndex) =>
-        currentIndex === index ? { ...barcode, barcode: value } : barcode
+        currentIndex === index ? { ...barcode, barcode: value } : barcode,
       ),
     }));
   };
@@ -248,7 +255,7 @@ export default function ProductFormPage() {
         current.barcodes.length === 1
           ? [{ barcode: "" }]
           : current.barcodes.filter(
-              (_, currentIndex) => currentIndex !== index
+              (_, currentIndex) => currentIndex !== index,
             ),
     }));
   };
@@ -287,7 +294,7 @@ export default function ProductFormPage() {
     setForm((current) => ({
       ...current,
       productUnits: current.productUnits.filter(
-        (_, currentIndex) => currentIndex !== index
+        (_, currentIndex) => currentIndex !== index,
       ),
     }));
   };
@@ -330,15 +337,15 @@ export default function ProductFormPage() {
       (u) =>
         u.unit_name.trim() &&
         u.conversion_factor !== "" &&
-        Number(u.conversion_factor) <= 1
+        Number(u.conversion_factor) <= 1,
     );
 
     if (invalidUnit) {
       toast.error(
         t(
           "screens.products.conversionMustExceedOne",
-          "Conversion factor must be greater than 1 — it can't be smaller than or equal to the base unit."
-        )
+          "Conversion factor must be greater than 1 — it can't be smaller than or equal to the base unit.",
+        ),
       );
       return;
     }
@@ -365,6 +372,7 @@ export default function ProductFormPage() {
       barcodes: form.barcodes.filter((item) => item.barcode.trim()),
       productUnits: cleanedUnits,
       oldQuantity: form.oldQuantity || 0,
+      tagIds,
     });
   };
 
@@ -585,7 +593,7 @@ export default function ProductFormPage() {
                   <span className="font-medium text-slate-400">
                     {t(
                       "screens.products.typeLocked",
-                      "— can't be changed after creation"
+                      "— can't be changed after creation",
                     )}
                   </span>
                 </div>
@@ -618,6 +626,20 @@ export default function ProductFormPage() {
                 </div>
               )}
             </div>
+          </Panel>
+
+          <Panel
+            accent="tags"
+            icon={<TagIcon size={15} />}
+            title={t("screens.tags.title")}
+          >
+            <TagPickerField
+              scope="product"
+              entityType="product"
+              entityId={activeProduct?.id}
+              selectedIds={tagIds}
+              onChange={setTagIds}
+            />
           </Panel>
 
           {/* Pricing */}
@@ -724,7 +746,7 @@ export default function ProductFormPage() {
                 <span>
                   {t(
                     "screens.products.unitsHint",
-                    "The base unit is your smallest unit. Any selling unit must represent a larger quantity — its conversion factor must be greater than 1 (e.g. a box of 12 has a conversion factor of 12)."
+                    "The base unit is your smallest unit. Any selling unit must represent a larger quantity — its conversion factor must be greater than 1 (e.g. a box of 12 has a conversion factor of 12).",
                   )}
                 </span>
               </div>
@@ -755,11 +777,11 @@ export default function ProductFormPage() {
                               updateProductUnit(
                                 index,
                                 "unit_name",
-                                event.target.value
+                                event.target.value,
                               )
                             }
                             placeholder={t(
-                              "screens.products.unitNamePlaceholder"
+                              "screens.products.unitNamePlaceholder",
                             )}
                             className={inputClass}
                           />
@@ -770,7 +792,7 @@ export default function ProductFormPage() {
                               updateProductUnit(index, "conversion_factor", val)
                             }
                             placeholder={t(
-                              "screens.products.conversionPlaceholder"
+                              "screens.products.conversionPlaceholder",
                             )}
                             className={
                               hasInvalidFactor
@@ -786,7 +808,7 @@ export default function ProductFormPage() {
                               updateProductUnit(index, "sale_price", val)
                             }
                             placeholder={t(
-                              "screens.products.unitSalePricePlaceholder"
+                              "screens.products.unitSalePricePlaceholder",
                             )}
                             className={inputClass}
                           />
@@ -798,13 +820,13 @@ export default function ProductFormPage() {
                                 updateProductUnit(
                                   index,
                                   "barcode",
-                                  normalizeDigits(event.target.value)
+                                  normalizeDigits(event.target.value),
                                 )
                               }
                               onKeyDown={(event) => handleBarcodeKeyDown(event)}
                               placeholder={t(
                                 "screens.products.unitBarcodePlaceholder",
-                                "Barcode"
+                                "Barcode",
                               )}
                               className={inputClass}
                             />
@@ -823,7 +845,7 @@ export default function ProductFormPage() {
                           <p className="mt-1 px-1 text-[11px] font-semibold text-red-500">
                             {t(
                               "screens.products.conversionMustExceedOne",
-                              "Conversion factor must be greater than 1 — it can't be smaller than or equal to the base unit."
+                              "Conversion factor must be greater than 1 — it can't be smaller than or equal to the base unit.",
                             )}
                           </p>
                         )}
@@ -859,7 +881,7 @@ export default function ProductFormPage() {
                         onChange={(event) =>
                           updateBarcode(
                             index,
-                            normalizeDigits(event.target.value)
+                            normalizeDigits(event.target.value),
                           )
                         }
                         onKeyDown={(event) =>

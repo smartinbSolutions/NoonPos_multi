@@ -15,6 +15,7 @@ import GoTo from "../../../../Global/GoTo";
 import FormattedDate from "../../../../Global/FormattedDate";
 import HoverTooltip from "../../../../Global/HoverTooltip";
 import BackButton from "../../../../Global/BackButton";
+import TagList from "../../../Tags/components/TagList";
 
 const STATUS_CONFIG = {
   paid: { bg: "bg-emerald-50", text: "text-emerald-600" },
@@ -36,6 +37,7 @@ export default function PurchaseReturnView() {
 
   const [returnInvoice, setReturnInvoice] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [tags, setTags] = useState([]);
   const { money } = usePrimaryCurrency();
 
   useEffect(() => {
@@ -48,6 +50,16 @@ export default function PurchaseReturnView() {
 
         if (!cancelled) {
           setReturnInvoice(data);
+        }
+
+        if (data && !cancelled) {
+          const tagsRes = await window.api.getEntityTags(
+            "purchase_return",
+            Number(id),
+          );
+          if (tagsRes.success && !cancelled) {
+            setTags(tagsRes.data);
+          }
         }
       } catch (error) {
         console.error("Failed to load purchase return:", error);
@@ -82,11 +94,11 @@ export default function PurchaseReturnView() {
 
   const itemTaxTotal = items.reduce(
     (sum, item) => sum + Number(item.taxValue || 0),
-    0
+    0,
   );
   const itemDiscountTotal = items.reduce(
     (sum, item) => sum + Number(item.discount || 0),
-    0
+    0,
   );
   const invoiceDiscount = Number(returnInvoice?.discount || 0);
   const invoiceTaxValue = Number(returnInvoice?.taxValue || 0);
@@ -98,7 +110,7 @@ export default function PurchaseReturnView() {
     try {
       setIsPrinting(true);
       const res = await window.api.printDocument(
-        `/print-purchase-return/${id}`
+        `/print-purchase-return/${id}`,
       );
       if (!res.success && res.error === "NO_PRINTER")
         console.error("No printer found");
@@ -114,7 +126,7 @@ export default function PurchaseReturnView() {
       setIsSavingPdf(true);
       const res = await window.api.saveDocumentPdf(
         `/print-purchase-return/${id}`,
-        `purchase-return-${id}.pdf`
+        `purchase-return-${id}.pdf`,
       );
       if (!res.success && res.error !== "CANCELED") console.error(res.error);
     } catch (err) {
@@ -228,6 +240,12 @@ export default function PurchaseReturnView() {
                   </span>
                   {returnInvoice.description}
                 </div>
+              </div>
+            )}
+            {tags.length > 0 && (
+              <div className="flex items-center gap-2 rounded-xl border border-[#e9edfb] bg-white px-3.5 py-2.5 print:hidden">
+                <Tag size={14} className="shrink-0 text-slate-400" />
+                <TagList tags={tags} limit={6} />
               </div>
             )}
 

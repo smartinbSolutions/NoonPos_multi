@@ -21,6 +21,7 @@ import GoTo from "../../../../Global/GoTo";
 import FormattedDate from "../../../../Global/FormattedDate";
 import HoverTooltip from "../../../../Global/HoverTooltip";
 import DropdownMenu from "../../../../Global/DropdownMenu";
+import TagList from "../../../Tags/components/TagList";
 
 const StatusBadge = ({ status, paidAmount, remainingAmount, money, t }) => {
   const config = {
@@ -88,6 +89,8 @@ const SalesReturnList = () => {
     clearFilters,
     customers,
     taxes,
+    allTags,
+    tagsByReturn,
   } = useSalesReturnList();
 
   const navigate = useNavigate();
@@ -138,6 +141,15 @@ const SalesReturnList = () => {
         label: `${tax.name} (${tax.rate}%)`,
       })),
     },
+    {
+      name: "tagIds",
+      type: "multiselect",
+      label: t("screens.tags.title"),
+      options: allTags.map((tag) => ({
+        value: tag.id,
+        label: tag.name,
+      })),
+    },
   ];
 
   const filtered = useMemo(() => {
@@ -182,7 +194,7 @@ const SalesReturnList = () => {
       setIsSavingPdf(true);
       const res = await window.api.saveDocumentPdf(
         `/print-sales-return/${id}`,
-        `sales-return-${id}.pdf`
+        `sales-return-${id}.pdf`,
       );
       if (!res.success && res.error !== "CANCELED") {
         console.error(res.error);
@@ -196,14 +208,14 @@ const SalesReturnList = () => {
 
   const totalNet = salesReturns?.reduce(
     (sum, inv) => sum + Number(inv.net_total || 0),
-    0
+    0,
   );
   const totalTax = salesReturns?.reduce(
     (sum, inv) => sum + Number(inv.total_tax_value ?? inv.taxValue ?? 0),
-    0
+    0,
   );
   const unpaidCount = salesReturns?.filter(
-    (inv) => inv.status !== "paid"
+    (inv) => inv.status !== "paid",
   ).length;
 
   return (
@@ -272,6 +284,9 @@ const SalesReturnList = () => {
                   <th className="px-5 py-4 text-start">{t("ui.tax")}</th>
                   <th className="px-5 py-4 text-start">{t("ui.net")}</th>
                   <th className="px-5 py-4 text-start">{t("ui.status")}</th>
+                  <th className="px-5 py-4 text-start">
+                    {t("screens.tags.title")}
+                  </th>
                   <th className="px-5 py-4 text-start">
                     {t("common.actions")}
                   </th>
@@ -396,6 +411,10 @@ const SalesReturnList = () => {
                           money={money}
                           t={t}
                         />
+                      </td>
+
+                      <td className="px-5 py-4 text-center">
+                        <TagList tags={tagsByReturn[inv.id] || []} limit={2} />
                       </td>
                       <td className="px-5 py-4 text-center">
                         <DropdownMenu

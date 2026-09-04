@@ -7,6 +7,7 @@ const VALID_REFERENCE_TYPES = [
   "initial",
   "import",
   "adjustment",
+  "manufacturing",
 ];
 
 const VALID_TYPES = ["in", "out"];

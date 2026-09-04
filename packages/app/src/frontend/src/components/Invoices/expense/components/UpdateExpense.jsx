@@ -11,6 +11,7 @@ import {
   X,
   Percent,
   StickyNote,
+  Tag,
 } from "lucide-react";
 import { toast } from "react-toastify";
 import SearchableSelect from "../../../../Global/SearchableSelect";
@@ -22,6 +23,7 @@ import useUpdateExpense from "../hooks/useUpdateExpense";
 import AddPayment from "../../../Cash/Payment/components/AddPayment";
 import DropdownMenu from "../../../../Global/DropdownMenu";
 import NumberInput from "../../../../Global/NumberInput";
+import TagPickerField from "../../../Tags/components/TagPickerField";
 
 const inputClass =
   "h-9 w-full rounded-xl border border-[#e1e7fb] bg-white px-3 text-sm font-semibold text-slate-900 outline-none transition placeholder:font-medium placeholder:text-slate-350 focus:border-[#4663ff] focus:ring-[3px] focus:ring-[#4663ff]/12 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400";
@@ -90,6 +92,8 @@ export default function UpdateExpense() {
     category,
     supplierOptions,
     taxes,
+    tagIds,
+    setTagIds,
     loading,
     saving,
     error,
@@ -117,7 +121,7 @@ export default function UpdateExpense() {
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
   const { money } = usePrimaryCurrency();
   const [revealedItemDiscounts, setRevealedItemDiscounts] = useState(
-    () => new Set()
+    () => new Set(),
   );
 
   const [revealedItemNotes, setRevealedItemNotes] = useState(() => new Set());
@@ -132,16 +136,16 @@ export default function UpdateExpense() {
       new Set(
         items
           .map((item, i) => (Number(item.discount_rate) > 0 ? i : null))
-          .filter((i) => i !== null)
-      )
+          .filter((i) => i !== null),
+      ),
     );
 
     setRevealedItemNotes(
       new Set(
         items
           .map((item, i) => (item.description ? i : null))
-          .filter((i) => i !== null)
-      )
+          .filter((i) => i !== null),
+      ),
     );
 
     setInvoiceDiscountRevealed(Number(invoice?.discount_rate) > 0);
@@ -312,6 +316,31 @@ export default function UpdateExpense() {
               </div>
             </section>
 
+            {/* Tags */}
+            <section className={panelClass}>
+              <AccentRule colorClass="bg-pink-500" />
+              <div className={panelBodyClass}>
+                <div className="mb-3 flex items-center gap-2.5">
+                  <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-pink-50 text-pink-600">
+                    <Tag size={15} />
+                  </span>
+                  <h3 className="text-[13px] font-black text-slate-950">
+                    {t("screens.tags.title")}
+                  </h3>
+                </div>
+
+                <TagPickerField
+                  scope="expense"
+                  entityType="expense"
+                  entityId={invoice?.id}
+                  selectedIds={tagIds}
+                  onChange={setTagIds}
+                  skipInitialFetch
+                  disabled={isLocked}
+                />
+              </div>
+            </section>
+
             <section className={panelClass}>
               <AccentRule colorClass="bg-violet-500" />
               <div className="flex items-center justify-between gap-3 border-b border-[#eef1ff] px-4 py-3">
@@ -446,12 +475,12 @@ export default function UpdateExpense() {
                                   ? Number(e.target.value)
                                   : null;
                                 const selectedTax = taxes?.find(
-                                  (tx) => tx.id === newTaxId
+                                  (tx) => tx.id === newTaxId,
                                 );
                                 updateItemTax(
                                   index,
                                   newTaxId,
-                                  selectedTax?.rate || 0
+                                  selectedTax?.rate || 0,
                                 );
                               }}
                             >
@@ -462,7 +491,7 @@ export default function UpdateExpense() {
                                 ?.filter(
                                   (tax) =>
                                     tax.category === "product" ||
-                                    tax.category === "both"
+                                    tax.category === "both",
                                 )
                                 .map((tax) => (
                                   <option key={tax.id} value={tax.id}>
@@ -692,7 +721,7 @@ export default function UpdateExpense() {
                           value=""
                           onChange={(e) => {
                             const selected = taxes.find(
-                              (tax) => tax.id === Number(e.target.value)
+                              (tax) => tax.id === Number(e.target.value),
                             );
                             if (selected) addInvoiceTax(selected);
                           }}
@@ -700,7 +729,7 @@ export default function UpdateExpense() {
                           <option value="">
                             {t(
                               "screens.invoices.addAnotherTax",
-                              "Add another tax"
+                              "Add another tax",
                             )}
                           </option>
                           {taxes
@@ -709,8 +738,8 @@ export default function UpdateExpense() {
                                 (tax.category === "invoice" ||
                                   tax.category === "both") &&
                                 !(invoice.taxes || []).some(
-                                  (applied) => applied.id === tax.id
-                                )
+                                  (applied) => applied.id === tax.id,
+                                ),
                             )
                             .map((tax) => (
                               <option key={tax.id} value={tax.id}>

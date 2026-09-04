@@ -98,7 +98,14 @@ import SalesReport from "./components/Reports/components/SalesReport";
 import PrintProfitLossReport from "./components/Reports/components/PrintProfitLossReport";
 import PrintSalesByProduct from "./components/Reports/components/PrintSalesByProduct";
 import PrintSalesByCustomer from "./components/Reports/components/PrintSalesByCustomer";
-import DbSetupPage from "./components/SetupPage/components/DbSetupPage";
+import TagsScreen from "./components/Tags/components/TagsScreen";
+import BomList from "./components/Manufactoring/components/BomList";
+import BomFormPage from "./components/Manufactoring/components/BomFormPage";
+import BomDetailPage from "./components/Manufactoring/components/BomDetailPage";
+import ManufacturingOrderList from "./components/Manufactoring/components/ManufacturingOrderList";
+import ManufacturingOrderFormPage from "./components/Manufactoring/components/ManufacturingOrderFormPage";
+import ManufacturingOrderDetailPage from "./components/Manufactoring/components/ManufacturingOrderDetailPage";
+import { LicenseProvider } from "./Global/LicenseContext";
 
 /* ================= ROUTE GUARDS ================= */
 
@@ -131,7 +138,6 @@ export default function App() {
   const { t } = useTranslation();
   const [licenseStatus, setLicenseStatus] = useState(null);
   const [isSetup, setIsSetup] = useState(null);
-  const [dbStatus, setDbStatus] = useState(null);
 
   useEffect(() => {
     const checkLicense = async () => {
@@ -150,37 +156,6 @@ export default function App() {
   useEffect(() => {
     if (!licenseStatus?.valid) return;
 
-    const checkDb = async () => {
-      try {
-        const hasConfig = await window.db?.hasConfig();
-        if (!hasConfig) {
-          setDbStatus({ hasConfig: false });
-          return;
-        }
-
-        // A config file existing isn't enough — actually verify it still
-        // connects. If the host's IP changed, or it's offline, this
-        // catches that and routes back to DbSetupPage automatically,
-        // rather than leaving the user stuck with a broken app and no
-        // way to fix it themselves.
-        const result = await window.db?.checkSavedConnection();
-        setDbStatus({
-          hasConfig: !!result?.success,
-          previouslyConnected: true,
-          lastError: result?.success ? null : result?.error,
-        });
-      } catch (err) {
-        console.error(err);
-        setDbStatus({ hasConfig: false });
-      }
-    };
-
-    checkDb();
-  }, [licenseStatus]);
-
-  useEffect(() => {
-    if (!licenseStatus?.valid || !dbStatus?.hasConfig) return;
-
     const check = async () => {
       try {
         const res = await window.api.getCompanySetting();
@@ -192,7 +167,7 @@ export default function App() {
     };
 
     check();
-  }, [licenseStatus, dbStatus]);
+  }, [licenseStatus]);
 
   if (licenseStatus === null) return <div>{t("common.loading")}</div>;
 
@@ -200,203 +175,226 @@ export default function App() {
     return (
       <ActivationPage
         reason={licenseStatus.reason}
-        onActivated={() => setLicenseStatus({ valid: true })}
-      />
-    );
-  }
-
-  if (dbStatus === null) return <div>{t("common.loading")}</div>;
-
-  if (!dbStatus.hasConfig) {
-    return (
-      <DbSetupPage
-        previouslyConnected={dbStatus.previouslyConnected}
-        onConnected={() => setDbStatus({ hasConfig: true })}
+        onActivated={(status) => setLicenseStatus(status)}
       />
     );
   }
 
   if (isSetup === null) return <div>{t("common.loading")}</div>;
+
   return (
-    <HashRouter>
-      <Routes>
-        {/* ================= SETUP MODE ================= */}
-        {!isSetup ? (
-          <>
-            <Route
-              path="/setup"
-              element={<SetupPage onSetupComplete={() => setIsSetup(true)} />}
-            />
-            <Route path="*" element={<Navigate to="/setup" />} />
-          </>
-        ) : (
-          <>
-            <Route
-              path="/"
-              element={
-                <AuthProvider>
-                  <AuthGate>
-                    <PosGate>
-                      <Layout />
-                    </PosGate>
-                  </AuthGate>
-                </AuthProvider>
-              }
-            >
-              {/* ================= CORE ================= */}
-              <Route index element={<Dashboard />} />
-              <Route path="pos" element={<POSSystem />} />
-
-              {/* ================= SALES ================= */}
-              <Route path="sales" element={<SalesList />} />
-              <Route path="add-sales" element={<AddSales />} />
-              <Route path="view-sales/:id" element={<SalesInvoiceView />} />
-              <Route path="edit-sales/:id" element={<UpdateSales />} />
-              <Route path="customer" element={<CustomerList />} />
-
-              {/* ================= SALES QUOTATIONS ================= */}
-              <Route path="sales-quotations" element={<SalesQuotationList />} />
+    <LicenseProvider licenseStatus={licenseStatus}>
+      <HashRouter>
+        <Routes>
+          {/* ================= SETUP MODE ================= */}
+          {!isSetup ? (
+            <>
               <Route
-                path="add-sales-quotation"
-                element={<AddSalesQuotation />}
+                path="/setup"
+                element={<SetupPage onSetupComplete={() => setIsSetup(true)} />}
               />
+              <Route path="*" element={<Navigate to="/setup" />} />
+            </>
+          ) : (
+            <>
               <Route
-                path="view-sales-quotation/:id"
-                element={<SalesQuotationView />}
-              />
-              <Route
-                path="edit-sales-quotation/:id"
-                element={<UpdateSalesQuotation />}
-              />
-
-              {/* ================= SALES RETURN ================= */}
-              <Route path="/sales-return" element={<SalesReturnList />} />
-              <Route
-                path="sales-return/:invoiceId"
-                element={<SalesReturnPage />}
-              />
-              <Route
-                path="/view-sales-return/:id"
-                element={<SalesReturnView />}
-              />
-
-              {/* ================= PURCHASE ================= */}
-              <Route path="purchase" element={<PurchaseList />} />
-              <Route path="add-purchase" element={<AddPurchase />} />
-              <Route
-                path="view-purchase/:id"
-                element={<PurchaseInvoiceView />}
-              />
-              <Route path="edit-purchase/:id" element={<UpdatePurchase />} />
-              <Route path="supplier" element={<SuppliersList />} />
-
-              {/* ================= PURCHASE RETURN ================= */}
-              <Route path="/purchase-return" element={<PurchaseReturnList />} />
-              <Route
-                path="purchase-return/:invoiceId"
-                element={<PurchaseReturnPage />}
-              />
-              <Route
-                path="view-purchase-return/:id"
-                element={<PurchaseReturnView />}
-              />
-
-              {/* ================= EXPENSES ================= */}
-              <Route path="expense" element={<ExpenseList />} />
-              <Route path="add-expense" element={<AddExpense />} />
-              <Route path="edit-expense/:id" element={<UpdateExpense />} />
-              <Route path="view-expense/:id" element={<ExpenseView />} />
-              <Route
-                path="expense-category"
-                element={<ExpenseCategoryList />}
-              />
-              <Route
-                path="expense-category/:id"
-                element={<ExpenseCategoryDetailPage />}
-              />
-
-              {/* ================= CASH / FUNDS ================= */}
-              <Route path="funds" element={<FundList />} />
-              <Route path="fund/:id" element={<FundMovementsPage />} />
-              <Route path="fundTransfer" element={<FundTransferList />} />
-              <Route path="payments" element={<PaymentList />} />
-              <Route path="payment/:type/:id" element={<PartyLedgerPage />} />
-              <Route path="currency" element={<CurrencyList />} />
-              <Route path="/payments/:id" element={<PaymentDocumentPage />} />
-              <Route
-                path="/funds/transfers/:id"
-                element={<FundTransferDocumentPage />}
-              />
-
-              {/* ================= PRODUCTS ================= */}
-              <Route path="products" element={<ProductList />} />
-              <Route path="products/new" element={<ProductFormPage />} />
-              <Route path="products/:id/edit" element={<ProductFormPage />} />
-              <Route path="products/:id" element={<ProductDetailPage />} />
-              <Route path="import-reports" element={<ImportSummary />} />
-
-              {/* ================= PARTNERS ================= */}
-              <Route path="partners" element={<PartnersList />} />
-              {/* ================= REPORTS ================= */}
-              <Route
-                path="/reports/profit-loss"
-                element={<ProfitLossReport />}
-              />
-              <Route path="/reports/sales" element={<SalesReport />} />
-
-              {/* ================= SETTINGS ================= */}
-              <Route path="unit" element={<UnitList />} />
-              <Route path="tax" element={<TaxList />} />
-              <Route path="company-info" element={<CompanyGeneralInfo />} />
-              <Route
-                path="company-settings"
-                element={<CompanyBusinessSettings />}
-              />
-              <Route
-                path="users"
+                path="/"
                 element={
-                  <AdminRoute>
-                    <UsersList />
-                  </AdminRoute>
+                  <AuthProvider>
+                    <AuthGate>
+                      <PosGate>
+                        <Layout />
+                      </PosGate>
+                    </AuthGate>
+                  </AuthProvider>
                 }
+              >
+                {/* ================= CORE ================= */}
+                <Route index element={<Dashboard />} />
+                <Route path="pos" element={<POSSystem />} />
+
+                {/* ================= SALES ================= */}
+                <Route path="sales" element={<SalesList />} />
+                <Route path="add-sales" element={<AddSales />} />
+                <Route path="view-sales/:id" element={<SalesInvoiceView />} />
+                <Route path="edit-sales/:id" element={<UpdateSales />} />
+                <Route path="customer" element={<CustomerList />} />
+
+                {/* ================= SALES QUOTATIONS ================= */}
+                <Route
+                  path="sales-quotations"
+                  element={<SalesQuotationList />}
+                />
+                <Route
+                  path="add-sales-quotation"
+                  element={<AddSalesQuotation />}
+                />
+                <Route
+                  path="view-sales-quotation/:id"
+                  element={<SalesQuotationView />}
+                />
+                <Route
+                  path="edit-sales-quotation/:id"
+                  element={<UpdateSalesQuotation />}
+                />
+
+                {/* ================= SALES RETURN ================= */}
+                <Route path="/sales-return" element={<SalesReturnList />} />
+                <Route
+                  path="sales-return/:invoiceId"
+                  element={<SalesReturnPage />}
+                />
+                <Route
+                  path="/view-sales-return/:id"
+                  element={<SalesReturnView />}
+                />
+
+                {/* ================= PURCHASE ================= */}
+                <Route path="purchase" element={<PurchaseList />} />
+                <Route path="add-purchase" element={<AddPurchase />} />
+                <Route
+                  path="view-purchase/:id"
+                  element={<PurchaseInvoiceView />}
+                />
+                <Route path="edit-purchase/:id" element={<UpdatePurchase />} />
+                <Route path="supplier" element={<SuppliersList />} />
+
+                {/* ================= PURCHASE RETURN ================= */}
+                <Route
+                  path="/purchase-return"
+                  element={<PurchaseReturnList />}
+                />
+                <Route
+                  path="purchase-return/:invoiceId"
+                  element={<PurchaseReturnPage />}
+                />
+                <Route
+                  path="view-purchase-return/:id"
+                  element={<PurchaseReturnView />}
+                />
+
+                {/* ================= EXPENSES ================= */}
+                <Route path="expense" element={<ExpenseList />} />
+                <Route path="add-expense" element={<AddExpense />} />
+                <Route path="edit-expense/:id" element={<UpdateExpense />} />
+                <Route path="view-expense/:id" element={<ExpenseView />} />
+                <Route
+                  path="expense-category"
+                  element={<ExpenseCategoryList />}
+                />
+                <Route
+                  path="expense-category/:id"
+                  element={<ExpenseCategoryDetailPage />}
+                />
+
+                {/* ================= CASH / FUNDS ================= */}
+                <Route path="funds" element={<FundList />} />
+                <Route path="fund/:id" element={<FundMovementsPage />} />
+                <Route path="fundTransfer" element={<FundTransferList />} />
+                <Route path="payments" element={<PaymentList />} />
+                <Route path="payment/:type/:id" element={<PartyLedgerPage />} />
+                <Route path="currency" element={<CurrencyList />} />
+                <Route path="/payments/:id" element={<PaymentDocumentPage />} />
+                <Route
+                  path="/funds/transfers/:id"
+                  element={<FundTransferDocumentPage />}
+                />
+
+                {/* ================= PRODUCTS ================= */}
+                <Route path="products" element={<ProductList />} />
+                <Route path="products/new" element={<ProductFormPage />} />
+                <Route path="products/:id/edit" element={<ProductFormPage />} />
+                <Route path="products/:id" element={<ProductDetailPage />} />
+                <Route path="import-reports" element={<ImportSummary />} />
+
+                {/* ================= BOMS ================= */}
+                <Route path="boms" element={<BomList />} />
+                <Route path="boms/new" element={<BomFormPage />} />
+                <Route path="boms/:id/edit" element={<BomFormPage />} />
+                <Route path="boms/:id" element={<BomDetailPage />} />
+
+                {/* ================= MANUFACTURING ORDERS ================= */}
+                <Route
+                  path="manufacturing-orders"
+                  element={<ManufacturingOrderList />}
+                />
+                <Route
+                  path="manufacturing-orders/new"
+                  element={<ManufacturingOrderFormPage />}
+                />
+                <Route
+                  path="manufacturing-orders/:id/edit"
+                  element={<ManufacturingOrderFormPage />}
+                />
+                <Route
+                  path="manufacturing-orders/:id"
+                  element={<ManufacturingOrderDetailPage />}
+                />
+
+                {/* ================= PARTNERS ================= */}
+                <Route path="partners" element={<PartnersList />} />
+                {/* ================= REPORTS ================= */}
+                <Route
+                  path="/reports/profit-loss"
+                  element={<ProfitLossReport />}
+                />
+                <Route path="/reports/sales" element={<SalesReport />} />
+
+                {/* ================= SETTINGS ================= */}
+                <Route path="unit" element={<UnitList />} />
+                <Route path="tax" element={<TaxList />} />
+                <Route path="tags" element={<TagsScreen />} />
+                <Route path="company-info" element={<CompanyGeneralInfo />} />
+                <Route
+                  path="company-settings"
+                  element={<CompanyBusinessSettings />}
+                />
+                <Route
+                  path="users"
+                  element={
+                    <AdminRoute>
+                      <UsersList />
+                    </AdminRoute>
+                  }
+                />
+              </Route>
+              <Route path="/print-sales/:id" element={<PrintSalesInvoice />} />
+              <Route
+                path="/print-sales-quotation/:id"
+                element={<PrintSalesQuotation />}
               />
-            </Route>
-            <Route path="/print-sales/:id" element={<PrintSalesInvoice />} />
-            <Route
-              path="/print-sales-quotation/:id"
-              element={<PrintSalesQuotation />}
-            />
-            <Route
-              path="/print-sales-return/:id"
-              element={<PrintSalesReturn />}
-            />
-            <Route
-              path="/print-purchase/:id"
-              element={<PrintPurchaseInvoice />}
-            />
-            <Route
-              path="/print-purchase-return/:id"
-              element={<PrintPurchaseReturn />}
-            />
-            <Route path="/print-payment/:id" element={<PrintPayment />} />
-            <Route path="/print-expense/:id" element={<PrintExpense />} />
-            <Route
-              path="/print-profit-loss"
-              element={<PrintProfitLossReport />}
-            />
-            <Route
-              path="/print-sales-by-product"
-              element={<PrintSalesByProduct />}
-            />
-            <Route
-              path="/print-sales-by-customer"
-              element={<PrintSalesByCustomer />}
-            />
-            {/* fallback */}
-            <Route path="*" element={<Navigate to="/" />} />
-          </>
-        )}
-      </Routes>
-    </HashRouter>
+              <Route
+                path="/print-sales-return/:id"
+                element={<PrintSalesReturn />}
+              />
+              <Route
+                path="/print-purchase/:id"
+                element={<PrintPurchaseInvoice />}
+              />
+              <Route
+                path="/print-purchase-return/:id"
+                element={<PrintPurchaseReturn />}
+              />
+              <Route path="/print-payment/:id" element={<PrintPayment />} />
+              <Route path="/print-expense/:id" element={<PrintExpense />} />
+              <Route
+                path="/print-profit-loss"
+                element={<PrintProfitLossReport />}
+              />
+              <Route
+                path="/print-sales-by-product"
+                element={<PrintSalesByProduct />}
+              />
+              <Route
+                path="/print-sales-by-customer"
+                element={<PrintSalesByCustomer />}
+              />
+              {/* fallback */}
+              <Route path="*" element={<Navigate to="/" />} />
+            </>
+          )}
+        </Routes>
+      </HashRouter>
+    </LicenseProvider>
   );
 }

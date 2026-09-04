@@ -12,6 +12,7 @@ export default function usePurchaseReturn() {
 
   const [invoice, setInvoice] = useState(null);
   const [items, setItems] = useState([]);
+  const [tagIds, setTagIds] = useState([]);
   const [note, setNote] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -46,7 +47,7 @@ export default function usePurchaseReturn() {
                 : Number(item.available_quantity || 0),
             returnUnitQuantity: 0,
           };
-        })
+        }),
       );
       setError("");
     } catch (err) {
@@ -72,7 +73,7 @@ export default function usePurchaseReturn() {
         const qty = Math.min(raw, max);
 
         return { ...item, returnUnitQuantity: qty };
-      })
+      }),
     );
   };
 
@@ -81,13 +82,13 @@ export default function usePurchaseReturn() {
       prev.map((item) => ({
         ...item,
         returnUnitQuantity: Number(item.available_unit_quantity || 0),
-      }))
+      })),
     );
   };
 
   const clearAll = () => {
     setItems((prev) =>
-      prev.map((item) => ({ ...item, returnUnitQuantity: 0 }))
+      prev.map((item) => ({ ...item, returnUnitQuantity: 0 })),
     );
   };
 
@@ -155,7 +156,7 @@ export default function usePurchaseReturn() {
 
   const invoiceDiscount = useMemo(() => {
     return Number(
-      ((afterItemDiscounts * invoiceDiscountRate) / 100).toFixed(2)
+      ((afterItemDiscounts * invoiceDiscountRate) / 100).toFixed(2),
     );
   }, [afterItemDiscounts, invoiceDiscountRate]);
 
@@ -170,7 +171,9 @@ export default function usePurchaseReturn() {
   const netTotal = useMemo(() => {
     return Math.max(
       0,
-      Number((afterInvoiceDiscount + itemTaxTotal + invoiceTaxValue).toFixed(2))
+      Number(
+        (afterInvoiceDiscount + itemTaxTotal + invoiceTaxValue).toFixed(2),
+      ),
     );
   }, [afterInvoiceDiscount, itemTaxTotal, invoiceTaxValue]);
 
@@ -214,6 +217,9 @@ export default function usePurchaseReturn() {
         setError(result?.error || t("errors.saveFailed"));
         return { success: false, error: result?.error };
       }
+      if (result.returnId && tagIds.length > 0) {
+        await api.setEntityTags("purchase_return", result.returnId, tagIds);
+      }
 
       navigate("/purchase");
       return { success: true };
@@ -246,5 +252,7 @@ export default function usePurchaseReturn() {
     saving,
     error,
     submit,
+    tagIds,
+    setTagIds,
   };
 }

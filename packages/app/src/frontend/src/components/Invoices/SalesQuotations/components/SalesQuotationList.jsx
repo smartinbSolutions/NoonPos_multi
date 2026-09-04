@@ -25,6 +25,7 @@ import GoTo from "../../../../Global/GoTo";
 import HoverTooltip from "../../../../Global/HoverTooltip";
 import { ToastContainer } from "react-toastify";
 import DropdownMenu from "../../../../Global/DropdownMenu";
+import TagList from "../../../Tags/components/TagList";
 
 function BreakdownTooltip({ trigger, rows }) {
   const hasAnyValue = rows.some((r) => Number(r.value) > 0);
@@ -45,7 +46,7 @@ function BreakdownTooltip({ trigger, rows }) {
                 {row.display}
               </span>
             </div>
-          )
+          ),
       )}
     />
   );
@@ -75,6 +76,7 @@ const SalesQuotationList = () => {
   const {
     salesQuotations,
     loading,
+    saving,
     error,
     refetch,
     deleteQuotation,
@@ -91,6 +93,8 @@ const SalesQuotationList = () => {
     clearFilters,
     customers,
     taxes,
+    allTags,
+    tagsByQuotation,
   } = useSalesQuotationList();
 
   const navigate = useNavigate();
@@ -107,7 +111,7 @@ const SalesQuotationList = () => {
     try {
       setIsPrinting(true);
       const res = await api.printDocument(
-        `/print-sales-quotation/${quotationId}`
+        `/print-sales-quotation/${quotationId}`,
       );
       if (!res.success && res.error === "NO_PRINTER") {
         console.error("No printer found");
@@ -124,7 +128,7 @@ const SalesQuotationList = () => {
       setIsSavingPdf(true);
       const res = await api.saveDocumentPdf(
         `/print-sales-quotation/${quotationId}`,
-        `quotation-${quotationId}.pdf`
+        `quotation-${quotationId}.pdf`,
       );
       if (!res.success && res.error !== "CANCELED") {
         console.error(res.error);
@@ -179,6 +183,15 @@ const SalesQuotationList = () => {
         label: `${tax.name} (${tax.rate}%)`,
       })),
     },
+    {
+      name: "tagIds",
+      type: "multiselect",
+      label: t("screens.tags.title"),
+      options: allTags.map((tag) => ({
+        value: tag.id,
+        label: tag.name,
+      })),
+    },
   ];
 
   const filtered = useMemo(() => {
@@ -208,22 +221,22 @@ const SalesQuotationList = () => {
       setActionError(
         err?.message === "CANNOT_DELETE_ACCEPTED_QUOTATION"
           ? t("screens.quotations.cannotDeleteAccepted")
-          : t("screens.quotations.deleteFailed")
+          : t("screens.quotations.deleteFailed"),
       );
     }
   };
 
   const totalNet = salesQuotations.reduce(
     (sum, q) => sum + Number(q.net_total || 0),
-    0
+    0,
   );
   const totalTax = salesQuotations.reduce(
     (sum, q) => sum + Number(q.total_tax_value || q.taxValue || 0),
-    0
+    0,
   );
 
   const acceptedCount = salesQuotations.filter(
-    (q) => q.status === "accepted"
+    (q) => q.status === "accepted",
   ).length;
 
   return (
@@ -295,6 +308,9 @@ const SalesQuotationList = () => {
                   <th className="px-4 py-3 text-center">{t("ui.net")}</th>
                   <th className="px-4 py-3 text-center">{t("ui.status")}</th>
                   <th className="px-4 py-3 text-center">
+                    {t("screens.tags.title")}
+                  </th>
+                  <th className="px-4 py-3 text-center">
                     {t("common.actions")}
                   </th>
                 </tr>
@@ -318,13 +334,14 @@ const SalesQuotationList = () => {
                     const itemTax = Number(q.item_tax_total || 0);
                     const quotationTax = Number(q.taxValue || 0);
                     const totalTaxValue = Number(
-                      q.total_tax_value ?? itemTax + quotationTax
+                      q.total_tax_value ?? itemTax + quotationTax,
                     );
 
                     const itemDiscount = Number(q.item_discount_total || 0);
                     const quotationDiscount = Number(q.discount || 0);
                     const totalDiscountValue = Number(
-                      q.total_discount_value ?? itemDiscount + quotationDiscount
+                      q.total_discount_value ??
+                        itemDiscount + quotationDiscount,
                     );
 
                     const canEdit = q.status !== "accepted";
@@ -418,6 +435,13 @@ const SalesQuotationList = () => {
 
                         <td className="px-4 py-3 text-center">
                           <StatusBadge status={q.status} t={t} />
+                        </td>
+
+                        <td className="px-4 py-3 text-center">
+                          <TagList
+                            tags={tagsByQuotation[q.id] || []}
+                            limit={2}
+                          />
                         </td>
 
                         <td className="px-4 py-3 text-center">

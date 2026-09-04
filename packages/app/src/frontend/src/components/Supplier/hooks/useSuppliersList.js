@@ -37,6 +37,7 @@ const useSuppliersList = () => {
   const [total, setTotal] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
   const [balanceFilter, setBalanceFilterState] = useState("all"); // all | owing | settled
+  const [tagsBySupplier, setTagsBySupplier] = useState({});
 
   const api = window.api;
 
@@ -79,14 +80,14 @@ const useSuppliersList = () => {
           totalPayable: 0,
           totalPaid: 0,
           netOutstanding: 0,
-        }
+        },
       );
       setCounts(res?.counts || { all: 0, owing: 0, settled: 0 });
     } catch (err) {
       console.error("Failed to load supplier list:", err);
       setUnavailableHandlers([]);
       setError(
-        err?.message || t("errors.createFailed", { field: t("ui.supplier") })
+        err?.message || t("errors.createFailed", { field: t("ui.supplier") }),
       );
     } finally {
       setLoading(false);
@@ -96,6 +97,17 @@ const useSuppliersList = () => {
   useEffect(() => {
     refetch();
   }, [refetch]);
+
+  useEffect(() => {
+    if (suppliers.length === 0) {
+      setTagsBySupplier({});
+      return;
+    }
+    const ids = suppliers.map((s) => s.id);
+    api.getEntitiesTags("supplier", ids).then((res) => {
+      if (res.success) setTagsBySupplier(res.data);
+    });
+  }, [suppliers, api]);
 
   // Changing the filter re-queries the full dataset, so always snap back to page 1 —
   // otherwise you could land on a page number that no longer exists for the new filter.
@@ -157,6 +169,9 @@ const useSuppliersList = () => {
   const handleCreateSupplier = async (sup) => {
     try {
       const result = await createSupplier(sup);
+      if (result?.id && sup.tagIds !== undefined) {
+        await api.setEntityTags("supplier", result.id, sup.tagIds);
+      }
       setActionError("");
       toast.success(t("success.created", { field: t("ui.supplier") }));
       return result;
@@ -173,6 +188,9 @@ const useSuppliersList = () => {
   const handleUpdateSupplier = async (sup) => {
     try {
       await updateSupplier(sup);
+      if (sup.tagIds !== undefined) {
+        await api.setEntityTags("supplier", sup.id, sup.tagIds);
+      }
       setActionError("");
       toast.success(t("success.updated", { field: t("ui.supplier") }));
       return true;
@@ -217,6 +235,7 @@ const useSuppliersList = () => {
       name: sup.name || "",
       phone: sup.phone || "",
       address: sup.address || "",
+      tagIds: (tagsBySupplier[sup.id] || []).map((t) => t.id),
     });
   };
 
@@ -256,6 +275,7 @@ const useSuppliersList = () => {
     selecteSupplier,
     setSelecteSupplier,
     refetch,
+    tagsBySupplier,
 
     page,
     setPage,

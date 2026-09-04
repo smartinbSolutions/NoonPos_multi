@@ -8,6 +8,8 @@ import AddPayment from "../../Cash/Payment/components/AddPayment";
 import Pagination from "../../../Global/Pagination";
 import ContactListHeader from "../../../Global/Contactlistheader";
 import { ToastContainer } from "react-toastify";
+import TagList from "../../Tags/components/TagList";
+import TagPickerField from "../../Tags/components/TagPickerField";
 
 // dir="ltr" font-mono tabular-nums wrapper, per the app's RTL-number convention.
 // TODO: swap for the shared <Num> component if you'd rather keep one source of truth.
@@ -53,7 +55,7 @@ const BalanceCell = ({ total, paid, balance, money, t }) => {
   const isSettled = balance <= 0;
 
   return (
-    <div className="flex flex-col items-end gap-1">
+    <div className="flex flex-col items-center gap-1">
       <div className="flex items-center gap-2">
         <span
           className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
@@ -112,6 +114,7 @@ export const SuppliersList = () => {
     selecteSupplier,
     setSelecteSupplier,
     refetch,
+    tagsBySupplier,
 
     page,
     setPage,
@@ -139,7 +142,7 @@ export const SuppliersList = () => {
   const filteredSuppliers = (suppliers || []).filter((s) =>
     `${s.name} ${s.phone} ${s.address} ${s.total} ${s.total_paid}`
       .toLowerCase()
-      .includes(search.toLowerCase())
+      .includes(search.toLowerCase()),
   );
 
   const filterChipClass = (key) =>
@@ -190,6 +193,7 @@ export const SuppliersList = () => {
             actionError={actionError}
             submitLabel={t("screens.contacts.addSupplier")}
             t={t}
+            type="supplier"
           />
 
           <div className="flex items-center gap-2 border-b border-[#eef1ff] px-5 py-3">
@@ -222,11 +226,14 @@ export const SuppliersList = () => {
               <table className="w-full min-w-[760px] text-left text-sm">
                 <thead className="bg-[#f8faff] text-xs font-bold uppercase  text-slate-500">
                   <tr>
-                    <th className="px-5 py-4 text-start">{t("ui.name")}</th>
-                    <th className="px-5 py-4 text-start">{t("ui.phone")}</th>
-                    <th className="px-5 py-4 text-start">{t("ui.address")}</th>
-                    <th className="px-5 py-4 text-end">{t("ui.balance")}</th>
-                    <th className="px-5 py-4 text-start">
+                    <th className="px-5 py-4 text-center">{t("ui.name")}</th>
+                    <th className="px-5 py-4 text-center">{t("ui.phone")}</th>
+                    <th className="px-5 py-4 text-center">{t("ui.address")}</th>
+                    <th className="px-5 py-4 text-center">{t("ui.balance")}</th>
+                    <th className="px-5 py-4 text-center">
+                      {t("screens.tags.title") || "Tags"}
+                    </th>
+                    <th className="px-5 py-4 text-center">
                       {t("common.actions")}
                     </th>
                   </tr>
@@ -241,72 +248,89 @@ export const SuppliersList = () => {
                     if (editingId === supplier.id) {
                       return (
                         <tr key={supplier.id} className="bg-[#f8faff]">
-                          <td className="px-5 py-3">
-                            <input
-                              required
-                              form={`edit-supplier-${supplier.id}`}
-                              value={editing.name}
-                              onChange={(e) =>
-                                setEditing({
-                                  ...editing,
-                                  name: e.target.value,
-                                })
-                              }
-                              className={`${inputClass} w-full`}
-                              placeholder={t("ui.name")}
-                            />
-                          </td>
-                          <td className="px-5 py-3">
-                            <input
-                              form={`edit-supplier-${supplier.id}`}
-                              value={editing.phone}
-                              onChange={(e) =>
-                                setEditing({
-                                  ...editing,
-                                  phone: e.target.value,
-                                })
-                              }
-                              className={`${inputClass} w-full`}
-                              placeholder={t("ui.phone")}
-                            />
-                          </td>
-                          <td className="px-5 py-3">
-                            <input
-                              form={`edit-supplier-${supplier.id}`}
-                              value={editing.address}
-                              onChange={(e) =>
-                                setEditing({
-                                  ...editing,
-                                  address: e.target.value,
-                                })
-                              }
-                              className={`${inputClass} w-full`}
-                              placeholder={t("ui.address")}
-                            />
-                          </td>
-                          <td className="px-5 py-3 text-end">
-                            <span className="text-xs font-medium text-slate-400">
-                              {t(
-                                "screens.contacts.balanceLockedWhileEditing"
-                              ) || "Balance unchanged"}
-                            </span>
-                          </td>
-                          <td className="px-5 py-3">
-                            <form
-                              id={`edit-supplier-${supplier.id}`}
-                              onSubmit={submitEdit}
-                              className="flex items-center gap-1"
-                            >
-                              <button className="flex items-center gap-1.5 rounded-xl bg-[#4663ff] px-3 py-2 text-xs font-bold text-white hover:bg-[#3854e8]">
-                                {t("common.save")}
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => setEditingId(null)}
-                                className="rounded-xl border border-[#dbe4ff] bg-white p-2 text-slate-500 hover:bg-[#eef3ff]"
-                              >
-                                <span>&times;</span>
-                              </button>
+                          <td className="px-5 py-4" colSpan={6}>
+                            <form onSubmit={submitEdit} className="space-y-3">
+                              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                                <div className="space-y-1">
+                                  <label className="text-[11px] font-bold uppercase tracking-wide text-slate-400">
+                                    {t("ui.name")}
+                                  </label>
+                                  <input
+                                    required
+                                    value={editing.name}
+                                    onChange={(e) =>
+                                      setEditing({
+                                        ...editing,
+                                        name: e.target.value,
+                                      })
+                                    }
+                                    className={`${inputClass} w-full`}
+                                    placeholder={t("ui.name")}
+                                  />
+                                </div>
+
+                                <div className="space-y-1">
+                                  <label className="text-[11px] font-bold uppercase tracking-wide text-slate-400">
+                                    {t("ui.phone")}
+                                  </label>
+                                  <input
+                                    value={editing.phone}
+                                    onChange={(e) =>
+                                      setEditing({
+                                        ...editing,
+                                        phone: e.target.value,
+                                      })
+                                    }
+                                    className={`${inputClass} w-full`}
+                                    placeholder={t("ui.phone")}
+                                  />
+                                </div>
+
+                                <div className="space-y-1">
+                                  <label className="text-[11px] font-bold uppercase tracking-wide text-slate-400">
+                                    {t("ui.address")}
+                                  </label>
+                                  <input
+                                    value={editing.address}
+                                    onChange={(e) =>
+                                      setEditing({
+                                        ...editing,
+                                        address: e.target.value,
+                                      })
+                                    }
+                                    className={`${inputClass} w-full`}
+                                    placeholder={t("ui.address")}
+                                  />
+                                </div>
+                              </div>
+
+                              <div className="space-y-1">
+                                <label className="text-[11px] font-bold uppercase tracking-wide text-slate-400">
+                                  {t("screens.tags.title")}
+                                </label>
+                                <TagPickerField
+                                  scope="supplier"
+                                  entityType="supplier"
+                                  entityId={supplier.id}
+                                  selectedIds={editing.tagIds || []}
+                                  onChange={(ids) =>
+                                    setEditing({ ...editing, tagIds: ids })
+                                  }
+                                />
+                              </div>
+
+                              <div className="flex items-center justify-end gap-2 border-t border-[#e5ebff] pt-3">
+                                <button
+                                  type="button"
+                                  onClick={() => setEditingId(null)}
+                                  className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-bold text-slate-500 transition hover:bg-slate-50"
+                                >
+                                  {t("common.cancel")}
+                                </button>
+                                <button className="rounded-xl bg-[#4663ff] px-4 py-2 text-xs font-bold text-white shadow-md shadow-[#4663ff]/20 transition hover:bg-[#3854e8]">
+                                  {t("common.save")}
+                                </button>
+                              </div>
                             </form>
                           </td>
                         </tr>
@@ -318,7 +342,7 @@ export const SuppliersList = () => {
                         key={supplier.id}
                         className="transition hover:bg-[#f8faff]"
                       >
-                        <td className="px-5 py-3 text-start">
+                        <td className="px-5 py-3 text-center">
                           <div className="flex items-center gap-3">
                             <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#4663ff] text-xs font-bold text-white shadow-md shadow-[#4663ff]/20">
                               {supplier.name?.charAt(0)?.toUpperCase() || "S"}
@@ -328,13 +352,13 @@ export const SuppliersList = () => {
                             </span>
                           </div>
                         </td>
-                        <td className="px-5 py-3 text-start text-slate-500">
+                        <td className="px-5 py-3 text-center text-slate-500">
                           {supplier.phone || t("ui.noPhone")}
                         </td>
-                        <td className="px-5 py-3 text-start max-w-[200px] truncate text-slate-500">
+                        <td className="px-5 py-3 text-center max-w-[200px] truncate text-slate-500">
                           {supplier.address || t("ui.noAddress")}
                         </td>
-                        <td className="px-5 py-3 text-end">
+                        <td className="px-5 py-3 text-center">
                           <BalanceCell
                             total={supplierTotal}
                             paid={paid}
@@ -343,8 +367,14 @@ export const SuppliersList = () => {
                             t={t}
                           />
                         </td>
-                        <td className="px-5 py-3">
-                          <div className="flex justify-start gap-1">
+                        <td className="px-5 py-3 text-center">
+                          <TagList
+                            tags={tagsBySupplier[supplier.id] || []}
+                            limit={2}
+                          />
+                        </td>
+                        <td className="px-5 py-3 text-center">
+                          <div className="flex justify-center gap-1">
                             <button
                               onClick={() =>
                                 navigate(`/payment/supplier/${supplier.id}`)

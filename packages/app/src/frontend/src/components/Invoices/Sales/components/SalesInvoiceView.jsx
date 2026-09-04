@@ -15,6 +15,7 @@ import FormattedDate from "../../../../Global/FormattedDate";
 import HoverTooltip from "../../../../Global/HoverTooltip";
 import { useAuth } from "../../../../Global/AuthContext";
 import BackButton from "../../../../Global/BackButton";
+import TagList from "../../../Tags/components/TagList";
 
 const panelClass =
   "relative overflow-hidden rounded-2xl border border-[#e9edfb] bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]";
@@ -32,6 +33,7 @@ export default function SalesInvoiceView() {
   const [invoice, setInvoice] = useState(null);
   const [loading, setLoading] = useState(true);
   const { money } = usePrimaryCurrency();
+  const [tags, setTags] = useState([]);
   const api = window.api;
 
   useEffect(() => {
@@ -44,6 +46,16 @@ export default function SalesInvoiceView() {
 
         if (!cancelled) {
           setInvoice(data);
+        }
+
+        if (data && !cancelled) {
+          const tagsRes = await window.api.getEntityTags(
+            "sales_invoice",
+            Number(id),
+          );
+          if (tagsRes.success && !cancelled) {
+            setTags(tagsRes.data);
+          }
         }
       } catch (error) {
         console.error("Failed to load invoice:", error);
@@ -87,7 +99,7 @@ export default function SalesInvoiceView() {
       setIsSavingPdf(true);
       const res = await api.saveDocumentPdf(
         `/print-sales/${invoiceId}`,
-        `invoice-${invoiceId}.pdf`
+        `invoice-${invoiceId}.pdf`,
       );
       if (!res.success && res.error !== "CANCELED") {
         console.error(res.error);
@@ -106,11 +118,11 @@ export default function SalesInvoiceView() {
 
   const itemTaxTotal = items.reduce(
     (sum, item) => sum + Number(item.taxValue || 0),
-    0
+    0,
   );
   const itemDiscountTotal = items.reduce(
     (sum, item) => sum + Number(item.discount || 0),
-    0
+    0,
   );
   const invoiceDiscount = Number(invoice?.discount || 0);
   const invoiceTaxValue = Number(invoice?.taxValue || 0);
@@ -214,6 +226,12 @@ export default function SalesInvoiceView() {
                   className="mt-0.5 shrink-0 text-amber-500"
                 />
                 {invoice.description}
+              </div>
+            )}
+            {tags.length > 0 && (
+              <div className="flex items-center gap-2 rounded-xl border border-[#e9edfb] bg-white px-3.5 py-2.5 print:hidden">
+                <Tag size={14} className="shrink-0 text-slate-400" />
+                <TagList tags={tags} limit={6} />
               </div>
             )}
 

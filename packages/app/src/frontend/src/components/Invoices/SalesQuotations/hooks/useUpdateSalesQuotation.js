@@ -59,7 +59,7 @@ function toEditableItem(raw, availableUnits) {
   const matchedUnit =
     (availableUnits || []).find((u) => u.unit_name === raw.unit_name) ||
     (availableUnits || []).find(
-      (u) => Number(u.conversion_factor || 1) === factor
+      (u) => Number(u.conversion_factor || 1) === factor,
     ) ||
     (availableUnits || []).find((u) => u.is_base) ||
     null;
@@ -97,6 +97,7 @@ export default function useUpdateSalesQuotation() {
   const [products, setProducts] = useState([]);
   const [customers, setCustomers] = useState([]);
   const [taxes, setTaxes] = useState([]);
+  const [tagIds, setTagIds] = useState([]);
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -104,7 +105,7 @@ export default function useUpdateSalesQuotation() {
 
   const setQuotation = (updater) => {
     setQuotationState((prev) =>
-      typeof updater === "function" ? updater(prev) : { ...prev, ...updater }
+      typeof updater === "function" ? updater(prev) : { ...prev, ...updater },
     );
   };
 
@@ -140,6 +141,11 @@ export default function useUpdateSalesQuotation() {
         quotation_name: q.quotation_name || "",
       });
 
+      const tagsRes = await api.getEntityTags("sales_quotation", q.id);
+      if (tagsRes.success) {
+        setTagIds(tagsRes.data.map((tag) => tag.id));
+      }
+
       const rawItems = q.items || [];
       // Only fetch full product detail (for unit lists) for lines that
       // actually reference a real, still-existing product — rawItems with
@@ -150,16 +156,16 @@ export default function useUpdateSalesQuotation() {
       ];
 
       const fullProducts = await Promise.all(
-        productIds.map((pid) => api.getProduct(pid).catch(() => null))
+        productIds.map((pid) => api.getProduct(pid).catch(() => null)),
       );
       const unitsByProduct = new Map(
-        fullProducts.filter(Boolean).map((p) => [p.id, p.productUnits || []])
+        fullProducts.filter(Boolean).map((p) => [p.id, p.productUnits || []]),
       );
 
       setItems(
         rawItems.map((raw) =>
-          toEditableItem(raw, unitsByProduct.get(raw.product_id))
-        )
+          toEditableItem(raw, unitsByProduct.get(raw.product_id)),
+        ),
       );
 
       setProducts(prodsRes?.data || []);
@@ -281,7 +287,7 @@ export default function useUpdateSalesQuotation() {
       const copy = [...prev];
       const item = copy[index];
       const selectedUnit = item.available_units?.find(
-        (u) => u.id === Number(unitId)
+        (u) => u.id === Number(unitId),
       );
 
       if (!selectedUnit) return prev;
@@ -315,7 +321,7 @@ export default function useUpdateSalesQuotation() {
       available_units,
       unit_id,
       unit_name,
-    }
+    },
   ) => {
     setItems((prev) => {
       const copy = [...prev];
@@ -485,7 +491,7 @@ export default function useUpdateSalesQuotation() {
 
           setItems((prev) => {
             const existingIndex = prev.findIndex(
-              (i) => Number(i.product_id) === Number(product.id)
+              (i) => Number(i.product_id) === Number(product.id),
             );
 
             if (existingIndex !== -1) {
@@ -534,22 +540,22 @@ export default function useUpdateSalesQuotation() {
 
   const subtotal = useMemo(
     () => items.reduce((sum, item) => sum + (item.total || 0), 0),
-    [items]
+    [items],
   );
 
   const itemDiscountTotal = useMemo(
     () => items.reduce((sum, item) => sum + (item.discount || 0), 0),
-    [items]
+    [items],
   );
 
   const afterItemDiscounts = useMemo(
     () => subtotal - itemDiscountTotal,
-    [subtotal, itemDiscountTotal]
+    [subtotal, itemDiscountTotal],
   );
 
   const itemTaxTotal = useMemo(
     () => items.reduce((sum, item) => sum + (item.taxValue || 0), 0),
-    [items]
+    [items],
   );
 
   const itemTaxSummary = useMemo(() => {
@@ -583,7 +589,7 @@ export default function useUpdateSalesQuotation() {
 
   const afterQuotationDiscount = useMemo(
     () => afterItemDiscounts - quotationDiscount,
-    [afterItemDiscounts, quotationDiscount]
+    [afterItemDiscounts, quotationDiscount],
   );
 
   const quotationTaxValue = useMemo(() => {
@@ -627,7 +633,7 @@ export default function useUpdateSalesQuotation() {
   const netTotal = useMemo(
     () =>
       Math.max(0, afterQuotationDiscount + itemTaxTotal + quotationTaxValue),
-    [afterQuotationDiscount, itemTaxTotal, quotationTaxValue]
+    [afterQuotationDiscount, itemTaxTotal, quotationTaxValue],
   );
 
   const setQuotationDiscountRate = (rate) => {
@@ -651,7 +657,7 @@ export default function useUpdateSalesQuotation() {
 
       const usableItems = items.filter(
         (i) =>
-          (i.product_id || i.product_name?.trim()) && i.entered_quantity > 0
+          (i.product_id || i.product_name?.trim()) && i.entered_quantity > 0,
       );
 
       const payload = {
@@ -675,7 +681,7 @@ export default function useUpdateSalesQuotation() {
         setError(res?.error || t("errors.updateFailed"));
         return { success: false, error: res?.error };
       }
-
+      await api.setEntityTags("sales_quotation", id, tagIds);
       navigate("/sales-quotations");
       return { success: true };
     } catch (err) {
@@ -699,6 +705,8 @@ export default function useUpdateSalesQuotation() {
     products,
     customers,
     taxes,
+    tagIds,
+    setTagIds,
     addItem,
     removeItem,
     updateItem,

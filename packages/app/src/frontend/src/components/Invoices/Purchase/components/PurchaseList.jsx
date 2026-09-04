@@ -26,6 +26,7 @@ import FormattedDate from "../../../../Global/FormattedDate";
 import HoverTooltip from "../../../../Global/HoverTooltip";
 import GoTo from "../../../../Global/GoTo";
 import DropdownMenu from "../../../../Global/DropdownMenu";
+import TagList from "../../../Tags/components/TagList";
 import InvoiceIdBadge from "../../../../Global/InvoiceIdBadge";
 
 function BreakdownTooltip({ trigger, rows }) {
@@ -47,7 +48,7 @@ function BreakdownTooltip({ trigger, rows }) {
                 {row.display}
               </span>
             </div>
-          )
+          ),
       )}
     />
   );
@@ -125,6 +126,8 @@ const PurchaseList = () => {
     clearFilters,
     suppliers,
     taxes,
+    allTags,
+    tagsByInvoice,
   } = usePurchaseList();
 
   const navigate = useNavigate();
@@ -176,6 +179,15 @@ const PurchaseList = () => {
         label: `${tax.name} (${tax.rate}%)`,
       })),
     },
+    {
+      name: "tagIds",
+      type: "multiselect",
+      label: t("screens.tags.title"),
+      options: allTags.map((tag) => ({
+        value: tag.id,
+        label: tag.name,
+      })),
+    },
   ];
 
   const filtered = useMemo(() => {
@@ -216,7 +228,7 @@ const PurchaseList = () => {
       setIsSavingPdf(true);
       const res = await window.api.saveDocumentPdf(
         `/print-purchase/${id}`,
-        `purchase-${id}.pdf`
+        `purchase-${id}.pdf`,
       );
       if (!res.success && res.error !== "CANCELED") console.error(res.error);
     } catch (err) {
@@ -238,14 +250,14 @@ const PurchaseList = () => {
 
   const totalNet = purchaseInvoices.reduce(
     (sum, inv) => sum + Number(inv.net_total || 0),
-    0
+    0,
   );
   const totalTax = purchaseInvoices.reduce(
     (sum, inv) => sum + Number(inv.total_tax_value || inv.taxValue || 0),
-    0
+    0,
   );
   const unpaidCount = purchaseInvoices.filter(
-    (inv) => inv.status !== "paid"
+    (inv) => inv.status !== "paid",
   ).length;
 
   return (
@@ -315,6 +327,9 @@ const PurchaseList = () => {
                   <th className="px-4 py-3 text-center">{t("ui.net")}</th>
                   <th className="px-4 py-3 text-center">{t("ui.status")}</th>
                   <th className="px-4 py-3 text-center">
+                    {t("screens.tags.title")}
+                  </th>
+                  <th className="px-4 py-3 text-center">
                     {t("common.actions")}
                   </th>
                 </tr>
@@ -338,13 +353,14 @@ const PurchaseList = () => {
                     const itemTax = Number(inv.item_tax_total || 0);
                     const invoiceTax = Number(inv.taxValue || 0);
                     const totalTaxValue = Number(
-                      inv.total_tax_value ?? itemTax + invoiceTax
+                      inv.total_tax_value ?? itemTax + invoiceTax,
                     );
 
                     const itemDiscount = Number(inv.item_discount_total || 0);
                     const invoiceDiscount = Number(inv.discount || 0);
                     const totalDiscountValue = Number(
-                      inv.total_discount_value ?? itemDiscount + invoiceDiscount
+                      inv.total_discount_value ??
+                        itemDiscount + invoiceDiscount,
                     );
 
                     return (
@@ -439,6 +455,13 @@ const PurchaseList = () => {
                             />
                             <ReturnStatusBadge status={inv.return_status} />
                           </div>
+                        </td>
+
+                        <td className="px-4 py-3 text-center">
+                          <TagList
+                            tags={tagsByInvoice[inv.id] || []}
+                            limit={2}
+                          />
                         </td>
 
                         <td className="px-4 py-3 text-center">

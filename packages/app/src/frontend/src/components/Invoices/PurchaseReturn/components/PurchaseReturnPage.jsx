@@ -16,6 +16,7 @@ import FormattedDate from "../../../../Global/FormattedDate";
 import { normalizeDigits } from "../../../../Global/FormatNumber";
 import AddPayment from "../../../Cash/Payment/components/AddPayment";
 import NumberInput from "../../../../Global/NumberInput";
+import TagPickerField from "../../../Tags/components/TagPickerField";
 
 const panelClass =
   "relative overflow-hidden rounded-2xl border border-[#e9edfb] bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]";
@@ -50,6 +51,8 @@ export default function PurchaseReturnPage() {
     saving,
     error,
     submit,
+    tagIds,
+    setTagIds,
   } = usePurchaseReturn();
   const { money } = usePrimaryCurrency();
 
@@ -255,6 +258,22 @@ export default function PurchaseReturnPage() {
                 />
               </div>
             </section>
+
+            <section className={panelClass}>
+              <AccentRule colorClass="bg-pink-500" />
+              <div className={panelBodyClass}>
+                <label className="mb-1.5 block text-[10px] font-black uppercase tracking-wide text-slate-400">
+                  {t("screens.tags.title")}
+                </label>
+                <TagPickerField
+                  scope="purchase_return"
+                  entityType="purchase_return"
+                  entityId={null}
+                  selectedIds={tagIds}
+                  onChange={setTagIds}
+                />
+              </div>
+            </section>
           </main>
 
           <aside className="space-y-4">
@@ -330,8 +349,8 @@ export default function PurchaseReturnPage() {
                           Math.max(
                             0,
                             (afterInvoiceDiscount * Number(tax.tax_rate || 0)) /
-                              100
-                          )
+                              100,
+                          ),
                         )}
                       </span>
                     </div>

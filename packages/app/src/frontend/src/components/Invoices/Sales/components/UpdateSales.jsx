@@ -28,6 +28,7 @@ import CustomerFormModal from "./CustomerFormModal";
 import ProductQuickAddModal from "../../../Products/components/ProductQuickAddModal";
 import { normalizeDigits } from "../../../../Global/FormatNumber";
 import NumberInput from "../../../../Global/NumberInput";
+import TagPickerField from "../../../Tags/components/TagPickerField";
 
 const inputClass =
   "h-9 w-full rounded-xl border border-[#e1e7fb] bg-white px-3 text-sm font-semibold text-slate-900 outline-none transition placeholder:font-medium placeholder:text-slate-350 focus:border-[#4663ff] focus:ring-[3px] focus:ring-[#4663ff]/12 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400";
@@ -98,6 +99,8 @@ export default function UpdateSales() {
     products,
     customers,
     taxes,
+    tagIds,
+    setTagIds,
     addItem,
     removeItem,
     updateItem,
@@ -146,7 +149,7 @@ export default function UpdateSales() {
   const [confirmingTaxUpdate, setConfirmingTaxUpdate] = useState(false);
   const [customerModalOpen, setCustomerModalOpen] = useState(false);
   const [revealedItemDiscounts, setRevealedItemDiscounts] = useState(
-    () => new Set()
+    () => new Set(),
   );
   const [revealedItemNotes, setRevealedItemNotes] = useState(() => new Set());
   const [invoiceDiscountRevealed, setInvoiceDiscountRevealed] = useState(false);
@@ -164,15 +167,15 @@ export default function UpdateSales() {
       new Set(
         items
           .map((item, i) => (Number(item.discount_rate) > 0 ? i : null))
-          .filter((i) => i !== null)
-      )
+          .filter((i) => i !== null),
+      ),
     );
     setRevealedItemNotes(
       new Set(
         items
           .map((item, i) => (item.description ? i : null))
-          .filter((i) => i !== null)
-      )
+          .filter((i) => i !== null),
+      ),
     );
     setInvoiceDiscountRevealed(Number(invoice?.discount_rate) > 0);
     setInvoiceTaxRevealed((invoice?.taxes || []).length > 0);
@@ -354,7 +357,7 @@ export default function UpdateSales() {
                 : hasReturn
                   ? t(
                       "screens.invoices.lockedAfterReturn",
-                      "This invoice has a return and can no longer be edited."
+                      "This invoice has a return and can no longer be edited.",
                     )
                   : t("screens.invoices.lockedAfterPayment")}
             </span>
@@ -406,6 +409,29 @@ export default function UpdateSales() {
               </div>
             </section>
 
+            {/* Tags */}
+            <section className={panelClass}>
+              <AccentRule colorClass="bg-pink-500" />
+              <div className={panelBodyClass}>
+                <div className="mb-3 flex items-center gap-2.5">
+                  <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-pink-50 text-pink-600">
+                    <Tag size={15} />
+                  </span>
+                  <h3 className="text-[13px] font-black text-slate-950">
+                    {t("screens.tags.title")}
+                  </h3>
+                </div>
+
+                <TagPickerField
+                  scope="sales_invoice"
+                  entityType="sales_invoice"
+                  entityId={invoice?.id}
+                  selectedIds={tagIds}
+                  onChange={setTagIds}
+                  disabled={isLocked}
+                />
+              </div>
+            </section>
             <section className={panelClass}>
               <AccentRule colorClass="bg-violet-500" />
               <div className="flex items-center justify-between gap-3 border-b border-[#eef1ff] px-4 py-3">
@@ -467,13 +493,13 @@ export default function UpdateSales() {
                               updateItem(index, "product_id", e.id);
                             }}
                             onInputChange={async (value) => {
-                              if (!value.trim()) return;
                               try {
                                 const res = await api.getProducts({
                                   page: 1,
                                   limit: 50,
-                                  search: value,
+                                  search: value.trim() || undefined,
                                 });
+
                                 setProducts(res?.data || []);
                               } catch (err) {
                                 console.error(err);
@@ -652,7 +678,7 @@ export default function UpdateSales() {
                                 ?.filter(
                                   (tax) =>
                                     tax.category === "product" ||
-                                    tax.category === "both"
+                                    tax.category === "both",
                                 )
                                 .map((tax) => (
                                   <option key={tax.id} value={tax.id}>
@@ -882,7 +908,7 @@ export default function UpdateSales() {
                           value=""
                           onChange={(e) => {
                             const selected = taxes.find(
-                              (tax) => tax.id === Number(e.target.value)
+                              (tax) => tax.id === Number(e.target.value),
                             );
                             if (selected) addInvoiceTax(selected);
                           }}
@@ -890,7 +916,7 @@ export default function UpdateSales() {
                           <option value="">
                             {t(
                               "screens.invoices.addAnotherTax",
-                              "Add another tax"
+                              "Add another tax",
                             )}
                           </option>
                           {taxes
@@ -899,8 +925,8 @@ export default function UpdateSales() {
                                 (tax.category === "invoice" ||
                                   tax.category === "both") &&
                                 !(invoice.taxes || []).some(
-                                  (applied) => applied.id === tax.id
-                                )
+                                  (applied) => applied.id === tax.id,
+                                ),
                             )
                             .map((tax) => (
                               <option key={tax.id} value={tax.id}>
@@ -1145,7 +1171,7 @@ export default function UpdateSales() {
               const result = await submitProduct(form);
               const targetIndex = items.findIndex((i) => !i.product_id);
               const matchedTax = productTaxes?.find(
-                (tx) => tx.id === form.tax_id
+                (tx) => tx.id === form.tax_id,
               );
 
               if (targetIndex === -1) {

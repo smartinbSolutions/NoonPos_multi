@@ -88,6 +88,7 @@ export default function useAddPurchase({ isFormOpen, supplierModalOpen }) {
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const [taxes, setTaxes] = useState([]);
+  const [tagIds, setTagIds] = useState([]);
   const [suppliers, setSuppliers] = useState([]);
 
   const refetch = useCallback(async () => {
@@ -173,7 +174,7 @@ export default function useAddPurchase({ isFormOpen, supplierModalOpen }) {
       const copy = [...prev];
       const item = copy[index];
       const selectedUnit = item.available_units?.find(
-        (u) => u.id === Number(unitId)
+        (u) => u.id === Number(unitId),
       );
 
       if (!selectedUnit) return prev;
@@ -227,7 +228,7 @@ export default function useAddPurchase({ isFormOpen, supplierModalOpen }) {
       available_units,
       unit_id,
       unit_name,
-    }
+    },
   ) => {
     setItems((prev) => {
       const copy = [...prev];
@@ -379,7 +380,7 @@ export default function useAddPurchase({ isFormOpen, supplierModalOpen }) {
 
           setItems((prev) => {
             const existingIndex = prev.findIndex(
-              (i) => Number(i.product_id) === Number(product.id)
+              (i) => Number(i.product_id) === Number(product.id),
             );
 
             if (existingIndex !== -1) {
@@ -635,8 +636,13 @@ export default function useAddPurchase({ isFormOpen, supplierModalOpen }) {
           throw new Error(t("errors.createInvoiceFailed"));
         }
 
+        if (res.invoiceId && tagIds.length > 0) {
+          await api.setEntityTags("purchase_invoice", res.invoiceId, tagIds);
+        }
+
         setInvoice(emptyInvoice);
         setItems([emptyItem]);
+        setTagIds([]);
 
         navigat("/purchase");
         return res;
@@ -646,12 +652,22 @@ export default function useAddPurchase({ isFormOpen, supplierModalOpen }) {
         setSaving(false);
       }
     },
-    [api, invoice, items, subtotal, netTotal, invoiceDiscount, invoiceTaxValue]
+    [
+      api,
+      invoice,
+      items,
+      subtotal,
+      netTotal,
+      invoiceDiscount,
+      invoiceTaxValue,
+      tagIds,
+    ],
   );
 
   const reset = () => {
     setInvoice(emptyInvoice);
     setItems([emptyItem]);
+    setTagIds([]);
     setError("");
   };
 
@@ -668,6 +684,8 @@ export default function useAddPurchase({ isFormOpen, supplierModalOpen }) {
     products,
     suppliers,
     taxes,
+    tagIds,
+    setTagIds,
     addItem,
     removeItem,
     updateItem,

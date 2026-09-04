@@ -58,7 +58,7 @@ function toEditableItem(raw, availableUnits) {
   const matchedUnit =
     (availableUnits || []).find((u) => u.unit_name === raw.unit_name) ||
     (availableUnits || []).find(
-      (u) => Number(u.conversion_factor || 1) === factor
+      (u) => Number(u.conversion_factor || 1) === factor,
     ) ||
     (availableUnits || []).find((u) => u.is_base) ||
     null;
@@ -98,6 +98,7 @@ export default function useUpdatePurchase() {
   const [products, setProducts] = useState([]);
   const [suppliers, setSuppliers] = useState([]);
   const [taxes, setTaxes] = useState([]);
+  const [tagIds, setTagIds] = useState([]);
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -105,7 +106,7 @@ export default function useUpdatePurchase() {
 
   const setInvoice = (updater) => {
     setInvoiceState((prev) =>
-      typeof updater === "function" ? updater(prev) : { ...prev, ...updater }
+      typeof updater === "function" ? updater(prev) : { ...prev, ...updater },
     );
   };
 
@@ -143,23 +144,25 @@ export default function useUpdatePurchase() {
         remaining_amount: inv.remaining_amount,
       });
 
-      // Fetch full product detail (with productUnits) for every distinct
-      // product on the invoice, so unit-switching works the same way it does
-      // in the add flow — the item rows only carry unit_name, not the list.
+      const tagsRes = await api.getEntityTags("purchase_invoice", inv.id);
+      if (tagsRes.success) {
+        setTagIds(tagsRes.data.map((tag) => tag.id));
+      }
+
       const rawItems = inv.items || [];
       const productIds = [...new Set(rawItems.map((i) => i.product_id))];
 
       const fullProducts = await Promise.all(
-        productIds.map((pid) => api.getProduct(pid).catch(() => null))
+        productIds.map((pid) => api.getProduct(pid).catch(() => null)),
       );
       const unitsByProduct = new Map(
-        fullProducts.filter(Boolean).map((p) => [p.id, p.productUnits || []])
+        fullProducts.filter(Boolean).map((p) => [p.id, p.productUnits || []]),
       );
 
       setItems(
         rawItems.map((raw) =>
-          toEditableItem(raw, unitsByProduct.get(raw.product_id))
-        )
+          toEditableItem(raw, unitsByProduct.get(raw.product_id)),
+        ),
       );
 
       setProducts(prodsRes?.data || []);
@@ -265,7 +268,7 @@ export default function useUpdatePurchase() {
       const copy = [...prev];
       const item = copy[index];
       const selectedUnit = item.available_units?.find(
-        (u) => u.id === Number(unitId)
+        (u) => u.id === Number(unitId),
       );
 
       if (!selectedUnit) return prev;
@@ -394,7 +397,7 @@ export default function useUpdatePurchase() {
 
   const setItemProduct = (
     index,
-    { id, name, code, price, tax_id, tax_rate }
+    { id, name, code, price, tax_id, tax_rate },
   ) => {
     setItems((prev) => {
       const copy = [...prev];
@@ -465,7 +468,7 @@ export default function useUpdatePurchase() {
 
           setItems((prev) => {
             const existingIndex = prev.findIndex(
-              (i) => Number(i.product_id) === Number(product.id)
+              (i) => Number(i.product_id) === Number(product.id),
             );
 
             if (existingIndex !== -1) {
@@ -672,6 +675,8 @@ export default function useUpdatePurchase() {
         return { success: false, error: res.error };
       }
 
+      await api.setEntityTags("purchase_invoice", id, tagIds);
+
       navigat("/purchase");
       return { success: true };
     } catch (err) {
@@ -695,6 +700,8 @@ export default function useUpdatePurchase() {
     products,
     suppliers,
     taxes,
+    tagIds,
+    setTagIds,
     addItem,
     removeItem,
     updateItem,

@@ -1,6 +1,8 @@
 import React, { useState } from "react";
 import { RefreshCw, Search, Filter, X, SlidersHorizontal } from "lucide-react";
 import NumberInput from "./NumberInput";
+import SearchableSelect from "./SearchableSelect";
+import { useTranslation } from "react-i18next";
 
 const VARIANTS = {
   blue: {
@@ -29,9 +31,6 @@ const VARIANTS = {
   },
 };
 
-// Normalizes "is this field currently filtering anything" across both
-// scalar filters (date/number/select — active when non-empty) and
-// multiselect filters (an array — active when non-empty array).
 function isFieldActive(rawValue) {
   if (Array.isArray(rawValue)) return rawValue.length > 0;
   return rawValue !== null && rawValue !== undefined && rawValue !== "";
@@ -54,8 +53,9 @@ export default function InvoiceListHeader({
   onFilterChange,
   onClearFilters,
   filterFields = [],
-  clearLabel = "Clear",
+  clearLabel,
 }) {
+  const { t } = useTranslation();
   const [showFilters, setShowFilters] = useState(false);
 
   const gridColsClass =
@@ -74,15 +74,22 @@ export default function InvoiceListHeader({
 
       if (field.type === "select") {
         const match = field.options.find(
-          (opt) => String(opt.value) === String(rawValue)
+          (opt) => String(opt.value) === String(rawValue),
         );
         displayValue = match?.label ?? rawValue;
+      }
+
+      // Search-type fields don't carry their full option list (it's a
+      // live-search result set, not a complete lookup table), so the
+      // display label comes from the field itself, supplied by the caller.
+      if (field.type === "search") {
+        displayValue = field.selectedLabel || rawValue;
       }
 
       if (field.type === "multiselect") {
         const selectedLabels = (rawValue || []).map((v) => {
           const match = field.options.find(
-            (opt) => String(opt.value) === String(v)
+            (opt) => String(opt.value) === String(v),
           );
           return match?.label ?? v;
         });
@@ -97,6 +104,7 @@ export default function InvoiceListHeader({
         label: field.label,
         value: displayValue,
         isMultiselect: field.type === "multiselect",
+        onClear: field.onClear,
       };
     })
     .filter(Boolean);
@@ -225,9 +233,10 @@ export default function InvoiceListHeader({
               <span className="text-slate-400">{entry.label}:</span>
               <span className="font-bold text-[#4663ff]">{entry.value}</span>
               <button
-                onClick={() =>
-                  onFilterChange(entry.name, entry.isMultiselect ? [] : "")
-                }
+                onClick={() => {
+                  onFilterChange(entry.name, entry.isMultiselect ? [] : "");
+                  entry.onClear?.();
+                }}
                 className="ms-0.5 rounded-full p-0.5 text-slate-400 transition hover:bg-red-50 hover:text-red-500"
               >
                 <X size={11} />
@@ -241,7 +250,7 @@ export default function InvoiceListHeader({
               className="ms-1 inline-flex items-center gap-1 text-[11px] font-bold text-red-500 transition hover:text-red-600"
             >
               <X size={11} />
-              {clearLabel}
+              {clearLabel || t("common.clear")}
             </button>
           )}
         </div>
@@ -292,19 +301,44 @@ export default function InvoiceListHeader({
               );
             }
 
+            // Live-search filter — for fields with too many options to load
+            // as a flat list (products, customers, etc). The caller owns
+            // the option list and re-fetches it on every keystroke via
+            // field.onInputChange; the caller also owns the display label
+            // via field.selectedLabel, since the selected item may not be
+            // present in the current (search-scoped) options list.
+            if (field.type === "search") {
+              return (
+                <div key={field.name} className={fieldWrapperClass}>
+                  <label className={labelClass}>{field.label}</label>
+                  <SearchableSelect
+                    placeholder={field.placeholder || field.label}
+                    options={field.options || []}
+                    selectedValue={filters?.[field.name] || ""}
+                    selectedLabel={field.selectedLabel}
+                    onChange={(option) => {
+                      onFilterChange(field.name, option.id);
+                      field.onSelect?.(option);
+                    }}
+                    onInputChange={field.onInputChange}
+                  />
+                </div>
+              );
+            }
+
             if (field.type === "multiselect") {
               const selectedValues = filters?.[field.name] || [];
 
               const selectedOptions = selectedValues
                 .map((v) =>
-                  field.options.find((opt) => String(opt.value) === String(v))
+                  field.options.find((opt) => String(opt.value) === String(v)),
                 )
                 .filter(Boolean);
 
               const addOption = (optionValue) => {
                 if (!optionValue) return;
                 const exists = selectedValues.some(
-                  (v) => String(v) === String(optionValue)
+                  (v) => String(v) === String(optionValue),
                 );
                 if (exists) return;
                 onFilterChange(field.name, [...selectedValues, optionValue]);
@@ -314,8 +348,8 @@ export default function InvoiceListHeader({
                 onFilterChange(
                   field.name,
                   selectedValues.filter(
-                    (v) => String(v) !== String(optionValue)
-                  )
+                    (v) => String(v) !== String(optionValue),
+                  ),
                 );
               };
 
@@ -359,8 +393,8 @@ export default function InvoiceListHeader({
                         .filter(
                           (opt) =>
                             !selectedValues.some(
-                              (v) => String(v) === String(opt.value)
-                            )
+                              (v) => String(v) === String(opt.value),
+                            ),
                         )
                         .map((opt) => (
                           <option key={opt.value} value={opt.value}>

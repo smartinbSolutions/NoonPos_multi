@@ -63,7 +63,8 @@ export default function ProductImportModal({ isOpen, onClose, onImported }) {
     result &&
     (result.skippedProducts.length > 0 ||
       result.skippedBarcodes.length > 0 ||
-      result.skippedUnits.length > 0);
+      result.skippedUnits.length > 0 ||
+      result.skippedTags.length > 0);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
@@ -165,6 +166,14 @@ export default function ProductImportModal({ isOpen, onClose, onImported }) {
                     {t("screens.products.skippedUnits")}
                   </p>
                 </div>
+                <div className="rounded-2xl bg-amber-50 p-4 text-center">
+                  <p className="text-2xl font-black text-amber-700">
+                    {result.skippedTags.length}
+                  </p>
+                  <p className="text-xs font-semibold text-amber-600">
+                    {t("screens.products.skippedTags", "Skipped Tags")}
+                  </p>
+                </div>
               </div>
 
               {result.created.length > 0 && (
@@ -238,6 +247,31 @@ export default function ProductImportModal({ isOpen, onClose, onImported }) {
                           >
                             <span className="font-bold text-slate-700">
                               {t("ui.row")} {item.row} · {item.name}
+                            </span>
+                            <span className="shrink-0 text-amber-700 font-medium">
+                              {item.reason
+                                ? t(`errors.${item.reason}`)
+                                : t("ui.noReason")}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {result.skippedTags.length > 0 && (
+                    <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3">
+                      <p className="mb-2 text-xs font-black uppercase  text-amber-700">
+                        {t("screens.products.skippedTags", "Skipped Tags")}
+                      </p>
+                      <div className="space-y-1.5">
+                        {result.skippedTags.map((item, i) => (
+                          <div
+                            key={i}
+                            className="flex items-center justify-between gap-3 text-xs"
+                          >
+                            <span className="font-bold text-slate-700">
+                              {t("ui.row")} {item.row} · {item.name} ({item.tag}
+                              )
                             </span>
                             <span className="shrink-0 text-amber-700 font-medium">
                               {item.reason

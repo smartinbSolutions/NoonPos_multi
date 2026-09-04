@@ -62,6 +62,7 @@ const useAddExpense = ({ supplierModalOpen }) => {
   const [category, setCategory] = useState([]);
   const [suppliers, setSuppliers] = useState([]);
   const [taxes, setTaxes] = useState([]);
+  const [tagIds, setTagIds] = useState([]);
 
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -103,7 +104,7 @@ const useAddExpense = ({ supplierModalOpen }) => {
       { id: NO_SUPPLIER, name: t("ui.noSupplier") },
       ...(Array.isArray(suppliers?.data) ? suppliers?.data : []),
     ],
-    [suppliers, t]
+    [suppliers, t],
   );
 
   const addItem = () => {
@@ -373,6 +374,10 @@ const useAddExpense = ({ supplierModalOpen }) => {
           throw new Error(res?.error || t("errors.createInvoiceFailed"));
         }
 
+        if (res.invoiceId && tagIds.length > 0) {
+          await api.setEntityTags("expense", res.invoiceId, tagIds);
+        }
+
         setInvoice(emptyInvoice);
         setItems([emptyItem]);
 
@@ -397,12 +402,14 @@ const useAddExpense = ({ supplierModalOpen }) => {
       navigate,
       t,
       user,
-    ]
+      tagIds,
+    ],
   );
 
   const reset = () => {
     setInvoice(emptyInvoice);
     setItems([emptyItem]);
+    setTagIds([]);
     setError("");
   };
 
@@ -421,6 +428,8 @@ const useAddExpense = ({ supplierModalOpen }) => {
     supplierOptions,
     category,
     taxes,
+    tagIds,
+    setTagIds,
 
     loading,
     saving,

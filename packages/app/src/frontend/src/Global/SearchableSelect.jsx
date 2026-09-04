@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { createPortal } from "react-dom";
 
 const SearchableSelect = ({
   label,
@@ -35,6 +36,20 @@ const SearchableSelect = ({
     width: 0,
     maxHeight: 192,
   });
+
+  const menuRef = useRef(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (!rootRef.current) return;
+      const clickedInsideRoot = rootRef.current.contains(event.target);
+      const clickedInsideMenu = menuRef.current?.contains(event.target);
+      if (!clickedInsideRoot && !clickedInsideMenu) setIsOpen(false);
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   useEffect(() => {
     setIsOpen(false);
@@ -131,15 +146,15 @@ const SearchableSelect = ({
     };
   }, [isOpen]);
 
-  useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (!rootRef.current) return;
-      if (!rootRef.current.contains(event.target)) setIsOpen(false);
-    };
+  // useEffect(() => {
+  //   const handleClickOutside = (event) => {
+  //     if (!rootRef.current) return;
+  //     if (!rootRef.current.contains(event.target)) setIsOpen(false);
+  //   };
 
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
+  //   document.addEventListener("mousedown", handleClickOutside);
+  //   return () => document.removeEventListener("mousedown", handleClickOutside);
+  // }, []);
 
   return (
     <div className="relative w-full" ref={rootRef}>
@@ -186,36 +201,40 @@ const SearchableSelect = ({
         </div>
       </div>
 
-      {isOpen && !disabled && (
-        <div
-          className="z-[9999] flex flex-col rounded-2xl border border-slate-200 bg-white py-2 shadow-xl"
-          style={{
-            position: "fixed",
-            top: menuRect.top,
-            left: menuRect.left,
-            width: menuRect.width,
-            maxHeight: menuRect.maxHeight,
-            overflowY: "auto",
-          }}
-        >
-          {filteredOptions.length > 0 ? (
-            filteredOptions.map((option) => (
-              <button
-                type="button"
-                key={option.id || option._id}
-                className="cursor-pointer px-4 py-2 text-left text-xs font-medium text-slate-700 hover:bg-slate-100"
-                onClick={() => handleSelect(option)}
-              >
-                {getOptionLabel(option)}
-              </button>
-            ))
-          ) : (
-            <div className="px-4 py-2 text-xs text-slate-500">
-              {t("ui.noOptionsFound")}
-            </div>
-          )}
-        </div>
-      )}
+      {isOpen &&
+        !disabled &&
+        createPortal(
+          <div
+            ref={menuRef}
+            className="z-[9999] flex flex-col rounded-2xl border border-slate-200 bg-white py-2 shadow-xl"
+            style={{
+              position: "fixed",
+              top: menuRect.top,
+              left: menuRect.left,
+              width: menuRect.width,
+              maxHeight: menuRect.maxHeight,
+              overflowY: "auto",
+            }}
+          >
+            {filteredOptions.length > 0 ? (
+              filteredOptions.map((option) => (
+                <button
+                  type="button"
+                  key={option.id || option._id}
+                  className="cursor-pointer px-4 py-2 text-left text-xs font-medium text-slate-700 hover:bg-slate-100"
+                  onClick={() => handleSelect(option)}
+                >
+                  {getOptionLabel(option)}
+                </button>
+              ))
+            ) : (
+              <div className="px-4 py-2 text-xs text-slate-500">
+                {t("ui.noOptionsFound")}
+              </div>
+            )}
+          </div>,
+          document.body,
+        )}
     </div>
   );
 };

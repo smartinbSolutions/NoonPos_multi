@@ -21,7 +21,7 @@ const normalizeProductUnits = (productUnits = []) =>
     .filter(
       (unit) =>
         String(unit.unit_name || "").trim() &&
-        Number(unit.conversion_factor) > 1
+        Number(unit.conversion_factor) > 1,
     )
     .map((unit) => ({
       ...(unit.id ? { id: unit.id } : {}),
@@ -63,6 +63,14 @@ const productPayload = (product) => ({
   productUnits: normalizeProductUnits(product.productUnits),
   date,
 });
+
+const emptyFilters = {
+  type: null,
+  unit_id: null,
+  hasTax: null,
+  tagIds: null,
+};
+
 export default function useProductCatalog() {
   const { t } = useTranslation();
   const [products, setProducts] = useState([]);
@@ -84,11 +92,22 @@ export default function useProductCatalog() {
   const [total, setTotal] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
   const [totalCost, setTotalCost] = useState(1);
+  const [filters, setFiltersState] = useState(emptyFilters);
   const api = window.api;
 
   const canUseUnits = !unavailableHandlers.includes("units");
   const canManageBarcodes = !unavailableHandlers.includes("product barcodes");
   const canUseTaxes = !unavailableHandlers.includes("taxes");
+
+  const setFilters = (patch) => {
+    setFiltersState((prev) => ({ ...prev, ...patch }));
+    setPage(1);
+  };
+
+  const clearFilters = () => {
+    setFiltersState(emptyFilters);
+    setPage(1);
+  };
 
   // Maps known backend error codes (from create/update-product) to a
   // translated, user-facing message. Anything not in this map falls back
@@ -100,18 +119,18 @@ export default function useProductCatalog() {
         case "MISSING_REQUIRED_FIELDS":
           return t(
             "errors.missingRequiredFields",
-            "Please fill in all required fields."
+            "Please fill in all required fields.",
           );
         case "DUPLICATE_UNIT_NAME":
           return t(
             "errors.duplicateUnitName",
-            "Two selling units can't have the same name (or match the base unit)."
+            "Two selling units can't have the same name (or match the base unit).",
           );
         default:
           return null;
       }
     },
-    [t]
+    [t],
   );
 
   const refetch = useCallback(async () => {
@@ -132,6 +151,10 @@ export default function useProductCatalog() {
             page,
             limit,
             search,
+            type: filters.type || undefined,
+            unit_id: filters.unit_id || undefined,
+            hasTax: filters.hasTax || undefined,
+            tagIds: filters.tagIds || undefined,
           }),
           api.getProductBarcodes(),
           api.getUnits(),
@@ -147,7 +170,7 @@ export default function useProductCatalog() {
       if (barcodesResult.status === "rejected") {
         console.error(
           "Failed to load product barcodes:",
-          barcodesResult.reason
+          barcodesResult.reason,
         );
         nextUnavailableHandlers.push("product barcodes");
       }
@@ -169,20 +192,20 @@ export default function useProductCatalog() {
       setTotal(productsResponse.total || 0);
       setTotalPages(productsResponse.totalPages || 1);
       setBarcodes(
-        barcodesResult.status === "fulfilled" ? barcodesResult.value || [] : []
+        barcodesResult.status === "fulfilled" ? barcodesResult.value || [] : [],
       );
       setUnits(
-        unitsResult.status === "fulfilled" ? unitsResult.value || [] : []
+        unitsResult.status === "fulfilled" ? unitsResult.value || [] : [],
       );
       setTaxes(
-        taxesResult.status === "fulfilled" ? taxesResult.value || [] : []
+        taxesResult.status === "fulfilled" ? taxesResult.value || [] : [],
       );
       setUnavailableHandlers(nextUnavailableHandlers);
 
       setError(
         nextUnavailableHandlers.length
           ? t("errors.partialLoad", { field: t("ui.products") })
-          : ""
+          : "",
       );
     } catch (err) {
       console.error("Failed to load product catalog:", err);
@@ -191,11 +214,11 @@ export default function useProductCatalog() {
     } finally {
       setLoading(false);
     }
-  }, [api, page, limit, search, t]);
+  }, [api, page, limit, search, filters, t]);
 
   useEffect(() => {
     refetch();
-  }, [page, limit, search]);
+  }, [refetch]);
 
   useEffect(() => {
     setPage(1);
@@ -219,7 +242,7 @@ export default function useProductCatalog() {
         throw new Error(
           mapProductErrorCode(result?.error) ||
             result?.error ||
-            t("errors.saveError")
+            t("errors.saveError"),
         );
       }
 
@@ -230,6 +253,10 @@ export default function useProductCatalog() {
           barcode: barcode.barcode,
           product_id: productId,
         });
+      }
+
+      if (form.tagIds !== undefined) {
+        await api.setEntityTags("product", productId, form.tagIds);
       }
 
       await refetch();
@@ -249,14 +276,14 @@ export default function useProductCatalog() {
           mapProductErrorCode(result?.error) ||
             result?.error ||
             result?.message ||
-            t("errors.saveError")
+            t("errors.saveError"),
         );
       }
 
       const nextBarcodes = normalizeBarcodes(form.barcodes);
       const existingBarcodes = barcodesByProduct[form.id] || [];
       const nextBarcodeIds = new Set(
-        nextBarcodes.filter((b) => b.id).map((b) => b.id)
+        nextBarcodes.filter((b) => b.id).map((b) => b.id),
       );
 
       for (const barcode of existingBarcodes) {
@@ -278,6 +305,10 @@ export default function useProductCatalog() {
             product_id: form.id,
           });
         }
+      }
+
+      if (form.tagIds !== undefined) {
+        await api.setEntityTags("product", form.id, form.tagIds);
       }
 
       await refetch();
@@ -350,7 +381,7 @@ export default function useProductCatalog() {
       setActionError(
         err?.message === "Product is used in invoices"
           ? t("screens.errors.productInUse")
-          : t("errors.deleteHasData", { field: t("ui.product") })
+          : t("errors.deleteHasData", { field: t("ui.product") }),
       );
     }
   };
@@ -405,5 +436,8 @@ export default function useProductCatalog() {
     total,
     totalPages,
     totalCost,
+    filters,
+    setFilters,
+    clearFilters,
   };
 }

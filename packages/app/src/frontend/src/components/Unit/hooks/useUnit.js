@@ -52,7 +52,7 @@ export default function useUnit() {
       console.error("Failed to load product catalog:", err);
       setUnavailableHandlers([]);
       setError(
-        err?.message || t("errors.createFailed", { field: t("ui.units") }),
+        err?.message || t("errors.createFailed", { field: t("ui.units") })
       );
     } finally {
       setLoading(false);
@@ -123,7 +123,7 @@ export default function useUnit() {
         setActionError(t("errors.unitAlreadyExists", { field: t("ui.unit") }));
       } else {
         setActionError(
-          err?.message || t("errors.createFailed", { field: t("ui.unit") }),
+          err?.message || t("errors.createFailed", { field: t("ui.unit") })
         );
       }
       return false;
@@ -141,7 +141,7 @@ export default function useUnit() {
         setActionError(t("errors.unitAlreadyExists", { field: t("ui.unit") }));
       } else {
         setActionError(
-          err?.message || t("errors.updateFailed", { field: t("ui.unit") }),
+          err?.message || t("errors.updateFailed", { field: t("ui.unit") })
         );
       }
       return false;

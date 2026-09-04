@@ -19,6 +19,7 @@ const FIELD_KEYS = [
   "description",
   "quantity",
   "barcodes",
+  "tags",
   "units",
 ];
 
@@ -49,8 +50,8 @@ export default function ProductUpdateModal({ isOpen, onClose, onUpdated }) {
       setError(
         t(
           "screens.products.selectAtLeastOneField",
-          "Select at least one field to update."
-        )
+          "Select at least one field to update.",
+        ),
       );
       return;
     }
@@ -100,7 +101,8 @@ export default function ProductUpdateModal({ isOpen, onClose, onUpdated }) {
     result &&
     (result.skippedProducts.length > 0 ||
       result.skippedBarcodes.length > 0 ||
-      result.skippedUnits.length > 0);
+      result.skippedUnits.length > 0 ||
+      result.skippedTags.length > 0);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
@@ -134,7 +136,7 @@ export default function ProductUpdateModal({ isOpen, onClose, onUpdated }) {
                 <p className="mb-3 text-sm text-slate-600">
                   {t(
                     "screens.products.updateFieldsHint",
-                    "Select which fields you want to update, then export the current product data. Only the fields you select will be editable in the exported file — everything else stays locked."
+                    "Select which fields you want to update, then export the current product data. Only the fields you select will be editable in the exported file — everything else stays locked.",
                   )}
                 </p>
 
@@ -166,7 +168,7 @@ export default function ProductUpdateModal({ isOpen, onClose, onUpdated }) {
                     ? t("common.saving")
                     : t(
                         "screens.products.exportForUpdate",
-                        "Export for Update"
+                        "Export for Update",
                       )}
                 </button>
               </div>
@@ -226,6 +228,14 @@ export default function ProductUpdateModal({ isOpen, onClose, onUpdated }) {
                     {t("screens.products.skippedUnits")}
                   </p>
                 </div>
+                <div className="rounded-2xl bg-amber-50 p-4 text-center">
+                  <p className="text-2xl font-black text-amber-700">
+                    {result.skippedTags.length}
+                  </p>
+                  <p className="text-xs font-semibold text-amber-600">
+                    {t("screens.products.skippedTags", "Skipped Tags")}
+                  </p>
+                </div>
               </div>
 
               {result.updated.length > 0 && (
@@ -233,7 +243,7 @@ export default function ProductUpdateModal({ isOpen, onClose, onUpdated }) {
                   <CheckCircle2 size={16} />
                   {t(
                     "screens.products.updateSuccess",
-                    "Products updated successfully."
+                    "Products updated successfully.",
                   )}
                 </div>
               )}
@@ -302,6 +312,31 @@ export default function ProductUpdateModal({ isOpen, onClose, onUpdated }) {
                           >
                             <span className="font-bold text-slate-700">
                               {t("ui.row")} {item.row} · {item.name}
+                            </span>
+                            <span className="shrink-0 text-amber-700 font-medium">
+                              {item.reason
+                                ? t(`errors.${item.reason}`)
+                                : t("ui.noReason")}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {result.skippedTags.length > 0 && (
+                    <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3">
+                      <p className="mb-2 text-xs font-black uppercase  text-amber-700">
+                        {t("screens.products.skippedTags", "Skipped Tags")}
+                      </p>
+                      <div className="space-y-1.5">
+                        {result.skippedTags.map((item, i) => (
+                          <div
+                            key={i}
+                            className="flex items-center justify-between gap-3 text-xs"
+                          >
+                            <span className="font-bold text-slate-700">
+                              {t("ui.row")} {item.row} · {item.name} ({item.tag}
+                              )
                             </span>
                             <span className="shrink-0 text-amber-700 font-medium">
                               {item.reason

@@ -30,6 +30,7 @@ import CustomerFormModal from "./CustomerFormModal";
 import DropdownMenu from "../../../../Global/DropdownMenu";
 import { normalizeDigits } from "../../../../Global/FormatNumber";
 import NumberInput from "../../../../Global/NumberInput";
+import TagPickerField from "../../../Tags/components/TagPickerField";
 
 // ---- Shared, module-level so re-renders never remount them ----
 
@@ -138,6 +139,8 @@ export default function AddSales() {
     setProducts,
     products,
     refetch,
+    tagIds,
+    setTagIds,
   } = useAddSales({ customerModalOpen, isFormOpen });
 
   const { submitDraft, setDraft, draft, actionError } = useCustomerList();
@@ -148,7 +151,7 @@ export default function AddSales() {
   const [confirmingTaxUpdate, setConfirmingTaxUpdate] = useState(false);
 
   const [revealedItemDiscounts, setRevealedItemDiscounts] = useState(
-    () => new Set()
+    () => new Set(),
   );
   const [revealedItemNotes, setRevealedItemNotes] = useState(() => new Set());
   const [invoiceDiscountRevealed, setInvoiceDiscountRevealed] = useState(false);
@@ -342,6 +345,29 @@ export default function AddSales() {
               </div>
             </section>
 
+            {/* Tags */}
+            <section className={panelClass}>
+              <AccentRule colorClass="bg-pink-500" />
+              <div className={panelBodyClass}>
+                <div className="mb-3 flex items-center gap-2.5">
+                  <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-pink-50 text-pink-600">
+                    <Tag size={15} />
+                  </span>
+                  <h3 className="text-[13px] font-black text-slate-950">
+                    {t("screens.tags.title")}
+                  </h3>
+                </div>
+
+                <TagPickerField
+                  scope="sales_invoice"
+                  entityType="sales_invoice"
+                  entityId={null}
+                  selectedIds={tagIds}
+                  onChange={setTagIds}
+                />
+              </div>
+            </section>
+
             {/* Items */}
             <section className={panelClass}>
               <AccentRule colorClass="bg-violet-500" />
@@ -433,13 +459,11 @@ export default function AddSales() {
                                 updateItem(index, "product_id", e.id);
                               }}
                               onInputChange={async (value) => {
-                                if (!value.trim()) return;
-
                                 try {
                                   const res = await api.getProducts({
                                     page: 1,
                                     limit: 50,
-                                    search: value,
+                                    search: value.trim() || undefined,
                                   });
 
                                   setProducts(res?.data || []);
@@ -623,7 +647,7 @@ export default function AddSales() {
                                   ?.filter(
                                     (tax) =>
                                       tax.category === "product" ||
-                                      tax.category === "both"
+                                      tax.category === "both",
                                   )
                                   .map((tax) => (
                                     <option key={tax.id} value={tax.id}>
@@ -683,7 +707,7 @@ export default function AddSales() {
                                 updateItemDescription(index, e.target.value)
                               }
                               placeholder={t(
-                                "screens.invoices.notePlaceholder"
+                                "screens.invoices.notePlaceholder",
                               )}
                             />
                             <button
@@ -847,7 +871,7 @@ export default function AddSales() {
                         value=""
                         onChange={(e) => {
                           const selected = taxes.find(
-                            (tax) => tax.id === Number(e.target.value)
+                            (tax) => tax.id === Number(e.target.value),
                           );
                           if (selected) addInvoiceTax(selected);
                         }}
@@ -855,7 +879,7 @@ export default function AddSales() {
                         <option value="">
                           {t(
                             "screens.invoices.addAnotherTax",
-                            "Add another tax"
+                            "Add another tax",
                           )}
                         </option>
                         {taxes
@@ -864,8 +888,8 @@ export default function AddSales() {
                               (tax.category === "invoice" ||
                                 tax.category === "both") &&
                               !(invoice.taxes || []).some(
-                                (applied) => applied.id === tax.id
-                              )
+                                (applied) => applied.id === tax.id,
+                              ),
                           )
                           .map((tax) => (
                             <option key={tax.id} value={tax.id}>
@@ -1116,7 +1140,7 @@ export default function AddSales() {
               const productUnits = fullProduct.productUnits || [];
               const baseUnit = productUnits.find((u) => u.is_base) || null;
               const matchedTax = productTaxes?.find(
-                (tx) => tx.id === form.tax_id
+                (tx) => tx.id === form.tax_id,
               );
 
               const targetIndex = items.findIndex((i) => !i.product_id);

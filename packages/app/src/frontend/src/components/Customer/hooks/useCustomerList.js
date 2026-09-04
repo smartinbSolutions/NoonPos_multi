@@ -36,6 +36,7 @@ const useCustomerList = () => {
   const [total, setTotal] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
   const [balanceFilter, setBalanceFilterState] = useState("all"); // all | owing | settled
+  const [tagsByCustomer, setTagsByCustomer] = useState({});
 
   const api = window.api;
 
@@ -78,14 +79,14 @@ const useCustomerList = () => {
           totalPayable: 0,
           totalPaid: 0,
           netOutstanding: 0,
-        }
+        },
       );
       setCounts(res?.counts || { all: 0, owing: 0, settled: 0 });
     } catch (err) {
       console.error("Failed to load customer list:", err);
       setUnavailableHandlers([]);
       setError(
-        err?.message || t("errors.createFailed", { field: t("ui.customer") })
+        err?.message || t("errors.createFailed", { field: t("ui.customer") }),
       );
     } finally {
       setLoading(false);
@@ -95,6 +96,17 @@ const useCustomerList = () => {
   useEffect(() => {
     refetch();
   }, [refetch]);
+
+  useEffect(() => {
+    if (customers.length === 0) {
+      setTagsByCustomer({});
+      return;
+    }
+    const ids = customers.map((c) => c.id);
+    api.getEntitiesTags("customer", ids).then((res) => {
+      if (res.success) setTagsByCustomer(res.data);
+    });
+  }, [customers, api]);
 
   // Changing the filter re-queries the full dataset, so always snap back to page 1.
   const setBalanceFilter = (nextFilter) => {
@@ -148,7 +160,7 @@ const useCustomerList = () => {
         throw new Error(
           res?.error ||
             res?.message ||
-            t("errors.deleteHasData", { field: t("ui.customer") })
+            t("errors.deleteHasData", { field: t("ui.customer") }),
         );
       }
 
@@ -162,6 +174,9 @@ const useCustomerList = () => {
   const handleCreateCustomer = async (cust) => {
     try {
       const result = await createCustomer(cust);
+      if (result?.id && cust.tagIds !== undefined) {
+        await api.setEntityTags("customer", result.id, cust.tagIds);
+      }
       setActionError("");
       toast.success(t("success.created", { field: t("ui.customer") }));
       return result;
@@ -178,6 +193,9 @@ const useCustomerList = () => {
   const handleUpdateCustomer = async (cust) => {
     try {
       await updateCustomer(cust);
+      if (cust.tagIds !== undefined) {
+        await api.setEntityTags("customer", cust.id, cust.tagIds);
+      }
       setActionError("");
       toast.success(t("success.updated", { field: t("ui.customer") }));
       return true;
@@ -223,6 +241,7 @@ const useCustomerList = () => {
       name: cust.name || "",
       phone: cust.phone || "",
       address: cust.address || "",
+      tagIds: (tagsByCustomer[cust.id] || []).map((t) => t.id),
     });
   };
 
@@ -270,6 +289,7 @@ const useCustomerList = () => {
     totalPages,
     balanceFilter,
     setBalanceFilter,
+    tagsByCustomer,
   };
 };
 

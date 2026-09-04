@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { normalizeDigits } from "./FormatNumber";
 import NumberInput from "./NumberInput";
+import TagPickerField from "../components/Tags/components/TagPickerField";
 
 const defaultOpeningDate = () => `${new Date().getFullYear()}-01-01`;
 
@@ -32,6 +33,7 @@ const ContactListHeader = ({
   submitLabel,
   type,
   t,
+  remainingPercentage,
 }) => {
   const [modalOpen, setModalOpen] = useState(false);
 
@@ -136,6 +138,42 @@ const ContactListHeader = ({
             className={`w-full ${inputClass}`}
             placeholder={t("ui.address")}
           />
+
+          {type === "partner" && (
+            <div className="space-y-1">
+              <label className="text-xs font-semibold text-slate-500">
+                {t("ui.percentage")}
+              </label>
+              <input
+                type="text"
+                inputMode="decimal"
+                value={draft.percentage || ""}
+                onChange={(e) =>
+                  setDraft({
+                    ...draft,
+                    percentage: normalizeDigits(e.target.value),
+                  })
+                }
+                className={`w-full ${inputClass}`}
+                placeholder="0"
+              />
+              <p className="text-[11px] text-slate-400">
+                {t("screens.contacts.maxPercentageAllowed", {
+                  value: remainingPercentage,
+                }) || `Max allowed: ${remainingPercentage}%`}
+              </p>
+            </div>
+          )}
+
+          <div className="space-y-1.5">
+            <TagPickerField
+              scope={type}
+              entityType={type}
+              entityId={null}
+              selectedIds={draft.tagIds || []}
+              onChange={(ids) => setDraft({ ...draft, tagIds: ids })}
+            />
+          </div>
 
           {/* Opening balance card */}
           <div className="rounded-2xl border border-dashed border-[#dbe4ff] bg-[#f8faff] p-4 space-y-3">

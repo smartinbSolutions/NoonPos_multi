@@ -43,7 +43,9 @@ CREATE TABLE IF NOT EXISTS product_movements (
       'sale_return',
       'initial',
       'import',
-      'adjustment'
+      'adjustment',
+      'manufacturing'
+
     )
   ),
   type TEXT NOT NULL CHECK (type IN ('in', 'out')),

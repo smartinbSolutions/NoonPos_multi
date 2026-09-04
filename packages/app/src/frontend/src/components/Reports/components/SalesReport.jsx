@@ -192,7 +192,7 @@ export default function SalesReport() {
           <p className="mt-1 text-sm text-slate-500">
             {t(
               "reports.salesSubtitle",
-              "What sold, who bought it, and how much you made — for the period you choose."
+              "What sold, who bought it, and how much you made — for the period you choose.",
             )}
           </p>
         </div>
@@ -239,7 +239,7 @@ export default function SalesReport() {
           <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-700">
             {t(
               "reports.invalidRange",
-              "The end date must be on or after the start date."
+              "The end date must be on or after the start date.",
             )}
           </div>
         )}
@@ -248,7 +248,7 @@ export default function SalesReport() {
           <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
             {t(
               `screens.errors.${error}`,
-              t("reports.loadFailed", "Couldn't load the report.")
+              t("reports.loadFailed", "Couldn't load the report."),
             )}
           </div>
         )}
@@ -320,7 +320,7 @@ export default function SalesReport() {
                   <button
                     onClick={() =>
                       window.api.printDocument(
-                        `/print-sales-by-product?startDate=${startDate}&endDate=${endDate}&showAll=${showAllProducts}`
+                        `/print-sales-by-product?startDate=${startDate}&endDate=${endDate}&showAll=${showAllProducts}`,
                       )
                     }
                     className="rounded-xl border border-[#e5ebff] bg-white px-3 py-1.5 text-xs font-bold text-slate-600 transition hover:bg-[#f8faff]"
@@ -364,7 +364,7 @@ export default function SalesReport() {
                         >
                           {t(
                             "reports.noProductData",
-                            "No sales in this range."
+                            "No sales in this range.",
                           )}
                         </td>
                       </tr>
@@ -428,7 +428,7 @@ export default function SalesReport() {
                   <button
                     onClick={() =>
                       window.api.printDocument(
-                        `/print-sales-by-customer?startDate=${startDate}&endDate=${endDate}&showAll=${showAllCustomers}`
+                        `/print-sales-by-customer?startDate=${startDate}&endDate=${endDate}&showAll=${showAllCustomers}`,
                       )
                     }
                     className="rounded-xl border border-[#e5ebff] bg-white px-3 py-1.5 text-xs font-bold text-slate-600 transition hover:bg-[#f8faff]"
@@ -466,7 +466,7 @@ export default function SalesReport() {
                         >
                           {t(
                             "reports.noCustomerData",
-                            "No sales in this range."
+                            "No sales in this range.",
                           )}
                         </td>
                       </tr>
@@ -483,7 +483,7 @@ export default function SalesReport() {
                               </GoTo>
                             ) : (
                               <span className="font-bold text-slate-700">
-                                {row.name}
+                                {row.name || t("ui.unknown")}
                               </span>
                             )}
                           </td>

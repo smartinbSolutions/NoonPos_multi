@@ -72,7 +72,7 @@ const FundList = () => {
     return (funds || []).filter((f) =>
       `${f.name} ${f.currency_code}`
         .toLowerCase()
-        .includes(search.toLowerCase())
+        .includes(search.toLowerCase()),
     );
   }, [funds, search]);
 

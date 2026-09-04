@@ -52,14 +52,19 @@ export default function usePosCheckout({ weight } = {}) {
   const [invoiceTaxes, setInvoiceTaxes] = useState([]); // [{ id, name, rate }]
   const [invoiceNote, setInvoiceNote] = useState("");
 
-  const [selectedCustomerId, setSelectedCustomerId] = useState("");
   const [loading, setLoading] = useState(true);
+  const [productsLoading, setProductsLoading] = useState(false);
+
+  const [selectedCustomerId, setSelectedCustomerId] = useState("");
   const [checkingOut, setCheckingOut] = useState(false);
   const [error, setError] = useState("");
   const [currencies, setCurrencies] = useState();
   const [search, setSearch] = useState("");
   const [allowNegativeStock, setAllowNegativeStock] = useState(false);
   const [posTaxMode, setPosTaxMode] = useState("manual"); // 'manual' | 'fixed'
+
+  const [allTags, setAllTags] = useState([]);
+  const [selectedTagIds, setSelectedTagIds] = useState([]);
 
   const weightRef = useRef(weight);
   const now = new Date();
@@ -83,33 +88,31 @@ export default function usePosCheckout({ weight } = {}) {
     weightRef.current = weight;
   }, [weight]);
 
-  const refetch = useCallback(async () => {
+  const loadInitialData = useCallback(async () => {
     if (!api) {
       setError(t("errors.apiUnavailable"));
+      setLoading(false);
       return;
     }
 
     try {
       setLoading(true);
+
       const [
-        productsResult,
         customersResult,
         fundsResult,
         currencyResult,
         settingsResult,
         taxesResult,
+        tagsResult,
       ] = await Promise.allSettled([
-        api.getPosProducts({ page: 1, limit: 50, search }),
         api.getCustomers(),
         api.getFunds(),
         api.getCurrencies(),
         api.getCompanySetting(),
         api.getTaxes(),
+        api.listTags("product"),
       ]);
-
-      if (productsResult.status === "rejected") {
-        throw productsResult.reason;
-      }
 
       if (customersResult.status === "rejected") {
         console.error("Failed to load customers:", customersResult.reason);
@@ -119,19 +122,22 @@ export default function usePosCheckout({ weight } = {}) {
         console.error("Failed to load funds:", fundsResult.reason);
       }
 
-      const productsRes = productsResult.value || {};
-
-      setProducts(productsRes.data || []);
       setCustomers(
         customersResult.status === "fulfilled"
           ? customersResult.value.data || []
-          : []
+          : [],
       );
       setFunds(
-        fundsResult.status === "fulfilled" ? fundsResult.value || [] : []
+        fundsResult.status === "fulfilled" ? fundsResult.value || [] : [],
       );
 
       setCurrencies(currencyResult.value?.[0] || []);
+
+      setAllTags(
+        tagsResult.status === "fulfilled" && tagsResult.value?.success
+          ? tagsResult.value.data
+          : [],
+      );
 
       const companySettings =
         settingsResult.status === "fulfilled"
@@ -150,21 +156,21 @@ export default function usePosCheckout({ weight } = {}) {
             id: t.tax_id,
             name: t.name,
             rate: t.rate,
-          })
+          }),
         );
         setInvoiceTaxes(defaults);
       }
 
       setTaxes(
-        taxesResult.status === "fulfilled" ? taxesResult.value || [] : []
+        taxesResult.status === "fulfilled" ? taxesResult.value || [] : [],
       );
 
       setError(
         [customersResult, fundsResult].some(
-          (result) => result.status === "rejected"
+          (result) => result.status === "rejected",
         )
           ? t("errors.partialLoad", { field: t("ui.products") })
-          : ""
+          : "",
       );
     } catch (err) {
       console.error("Failed to load POS data:", err);
@@ -172,7 +178,27 @@ export default function usePosCheckout({ weight } = {}) {
     } finally {
       setLoading(false);
     }
-  }, [api, search, t]);
+  }, [api, t]);
+
+  const loadProducts = useCallback(async () => {
+    if (!api) return;
+
+    try {
+      setProductsLoading(true);
+      const res = await api.getPosProducts({
+        page: 1,
+        limit: 50,
+        search,
+        tagIds: selectedTagIds,
+      });
+      setProducts(res?.data || []);
+    } catch (err) {
+      console.error("Failed to load products:", err);
+      setError(err?.message || t("errors.loadError"));
+    } finally {
+      setProductsLoading(false);
+    }
+  }, [api, search, selectedTagIds, t]);
 
   const searchTimeout = useRef(null);
 
@@ -180,11 +206,28 @@ export default function usePosCheckout({ weight } = {}) {
     clearTimeout(searchTimeout.current);
 
     searchTimeout.current = setTimeout(() => {
-      refetch();
+      loadProducts();
     }, 300);
 
     return () => clearTimeout(searchTimeout.current);
-  }, [search]);
+  }, [search, selectedTagIds]);
+
+  useEffect(() => {
+    loadInitialData();
+  }, [loadInitialData]);
+
+  const refetch = useCallback(() => {
+    loadInitialData();
+    loadProducts();
+  }, [loadInitialData, loadProducts]);
+
+  const toggleTagFilter = (tagId) => {
+    setSelectedTagIds((current) =>
+      current.includes(tagId)
+        ? current.filter((id) => id !== tagId)
+        : [...current, tagId],
+    );
+  };
 
   // ---- Cart mutations ----
 
@@ -203,7 +246,7 @@ export default function usePosCheckout({ weight } = {}) {
                 ...item,
                 qty: replaceQuantity ? qty : toNumber(item.qty) + qty,
               })
-            : item
+            : item,
         );
       }
 
@@ -234,8 +277,8 @@ export default function usePosCheckout({ weight } = {}) {
         : current.map((item) =>
             item.id === productId
               ? recalcCartItem({ ...item, qty: quantity })
-              : item
-          )
+              : item,
+          ),
     );
   };
 
@@ -255,7 +298,7 @@ export default function usePosCheckout({ weight } = {}) {
           taxRate > 0 ? inclusivePrice / (1 + taxRate / 100) : inclusivePrice;
 
         return recalcCartItem({ ...item, price: basePrice });
-      })
+      }),
     );
   };
 
@@ -267,16 +310,16 @@ export default function usePosCheckout({ weight } = {}) {
       current.map((item) =>
         item.id === productId
           ? recalcCartItem({ ...item, discount_rate: discountRate })
-          : item
-      )
+          : item,
+      ),
     );
   };
 
   const updateItemNote = (productId, description) => {
     setCart((current) =>
       current.map((item) =>
-        item.id === productId ? { ...item, description } : item
-      )
+        item.id === productId ? { ...item, description } : item,
+      ),
     );
   };
 
@@ -298,34 +341,34 @@ export default function usePosCheckout({ weight } = {}) {
 
   const subtotal = useMemo(
     () => cart.reduce((sum, item) => sum + toNumber(item.total), 0),
-    [cart]
+    [cart],
   );
 
   const itemDiscountTotal = useMemo(
     () => cart.reduce((sum, item) => sum + toNumber(item.discount), 0),
-    [cart]
+    [cart],
   );
 
   const afterItemDiscounts = useMemo(
     () => subtotal - itemDiscountTotal,
-    [subtotal, itemDiscountTotal]
+    [subtotal, itemDiscountTotal],
   );
 
   const itemTaxTotal = useMemo(
     () => cart.reduce((sum, item) => sum + toNumber(item.taxValue), 0),
-    [cart]
+    [cart],
   );
 
   // ---- Cascade — invoice level, layered on top ----
 
   const invoiceDiscount = useMemo(
     () => afterItemDiscounts * (toNumber(invoiceDiscountRate) / 100),
-    [afterItemDiscounts, invoiceDiscountRate]
+    [afterItemDiscounts, invoiceDiscountRate],
   );
 
   const afterInvoiceDiscount = useMemo(
     () => afterItemDiscounts - invoiceDiscount,
-    [afterItemDiscounts, invoiceDiscount]
+    [afterItemDiscounts, invoiceDiscount],
   );
 
   // ---- Invoice-level taxes: PARALLEL — each computed independently off
@@ -418,7 +461,7 @@ export default function usePosCheckout({ weight } = {}) {
   // footer shows as the total BEFORE any invoice discount/tax applies.
   const itemsNetTotal = useMemo(
     () => afterItemDiscounts + itemTaxTotal,
-    [afterItemDiscounts, itemTaxTotal]
+    [afterItemDiscounts, itemTaxTotal],
   );
   const checkout = async ({ payments, received }) => {
     setCheckingOut(true);
@@ -436,7 +479,7 @@ export default function usePosCheckout({ weight } = {}) {
           (payment) =>
             payment.fundId &&
             payment.amount > 0 &&
-            payment.amount_fund_currency > 0
+            payment.amount_fund_currency > 0,
         );
 
       const checkoutItems = cart.map((i) => ({
@@ -571,6 +614,7 @@ export default function usePosCheckout({ weight } = {}) {
     selectedCustomerId,
     setSelectedCustomerId,
     loading,
+    productsLoading,
     checkingOut,
     error,
     subtotal,
@@ -604,5 +648,9 @@ export default function usePosCheckout({ weight } = {}) {
     itemTaxSummary,
     itemDiscountSummary,
     itemsNetTotal,
+
+    allTags,
+    selectedTagIds,
+    toggleTagFilter,
   };
 }

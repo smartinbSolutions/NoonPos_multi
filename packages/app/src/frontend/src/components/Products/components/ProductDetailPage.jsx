@@ -18,6 +18,7 @@ import Pagination from "../../../Global/Pagination";
 import useProductMovements from "../hooks/useProductMovements";
 import GoTo from "../../../Global/GoTo";
 import BackButton from "../../../Global/BackButton";
+import TagList from "../../Tags/components/TagList";
 
 const TABS = [
   { key: "details", icon: Info },
@@ -47,16 +48,22 @@ export default function ProductDetailPage() {
     fetchMovements,
   } = useProductMovements(id);
 
+  const [tags, setTags] = useState([]);
+
   useEffect(() => {
     const loadProduct = async () => {
       setLoading(true);
       const result = await window.api.getProduct(Number(id));
       setProduct(result || null);
       setLoading(false);
+
+      if (result) {
+        const tagsRes = await window.api.getEntityTags("product", Number(id));
+        if (tagsRes.success) setTags(tagsRes.data);
+      }
     };
     loadProduct();
   }, [id]);
-
   useEffect(() => {
     if (activeTab === "movements") {
       fetchMovements();
@@ -183,6 +190,15 @@ export default function ProductDetailPage() {
                 </div>
               )}
             </div>
+
+            {tags.length > 0 && (
+              <div className="rounded-2xl bg-slate-50 p-4 mt-2">
+                <p className="mb-2 text-xs font-bold text-slate-500">
+                  {t("screens.tags.title")}
+                </p>
+                <TagList tags={tags} limit={4} />
+              </div>
+            )}
           </aside>
 
           {/* Main column: prominent tab bar + content panel */}
@@ -283,7 +299,7 @@ export default function ProductDetailPage() {
                                 ? unit.barcode
                                   ? [unit.barcode]
                                   : (product.barcodes || []).map(
-                                      (b) => b.barcode
+                                      (b) => b.barcode,
                                     )
                                 : unit.barcode
                                   ? [unit.barcode]
@@ -393,7 +409,7 @@ export default function ProductDetailPage() {
                                   <div className="text-sm font-bold text-slate-950">
                                     {t(
                                       `screens.products.action.${movement.action}`,
-                                      { defaultValue: movement.action }
+                                      { defaultValue: movement.action },
                                     )}
 
                                     <span className="ml-1.5 inline-flex items-center align-middle">
@@ -404,7 +420,7 @@ export default function ProductDetailPage() {
                                             {
                                               defaultValue:
                                                 movement.reference_type,
-                                            }
+                                            },
                                           )}
                                         </span>
                                       ) : (
@@ -417,7 +433,7 @@ export default function ProductDetailPage() {
                                             {
                                               defaultValue:
                                                 movement.reference_type,
-                                            }
+                                            },
                                           )}
                                         </GoTo>
                                       )}
@@ -446,7 +462,7 @@ export default function ProductDetailPage() {
                                       ? formatNumber(
                                           movement.quantity /
                                             movement.conversion_factor,
-                                          2
+                                          2,
                                         )
                                       : formatNumber(movement.quantity, 2)}{" "}
                                     {wasNonBaseUnit
@@ -464,10 +480,10 @@ export default function ProductDetailPage() {
                                             "= {{baseQty}} {{baseUnit}}",
                                           baseQty: formatNumber(
                                             movement.quantity,
-                                            2
+                                            2,
                                           ),
                                           baseUnit: movement.base_unit_name,
-                                        }
+                                        },
                                       )}
                                     </div>
                                   )}
@@ -475,7 +491,8 @@ export default function ProductDetailPage() {
                                     movement.outPrice > 0) && (
                                     <div className="text-xs text-slate-500">
                                       {money(
-                                        movement.enterPrice || movement.outPrice
+                                        movement.enterPrice ||
+                                          movement.outPrice,
                                       )}
                                     </div>
                                   )}

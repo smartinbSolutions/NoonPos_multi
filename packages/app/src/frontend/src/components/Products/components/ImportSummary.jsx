@@ -40,7 +40,7 @@ export default function ImportHistoryList() {
               total_imports: 0,
               total_created: 0,
               total_skipped: 0,
-            }
+            },
           );
         }
       } catch (err) {
@@ -166,7 +166,8 @@ export default function ImportHistoryList() {
                 const totalSkippedForRow =
                   (imp.skipped_products_count || 0) +
                   (imp.skipped_barcodes_count || 0) +
-                  (imp.skipped_units_count || 0);
+                  (imp.skipped_units_count || 0) +
+                  (imp.skipped_tags_count || 0);
                 const hasIssues = totalSkippedForRow > 0;
 
                 return (
@@ -191,7 +192,7 @@ export default function ImportHistoryList() {
                           <p className="font-bold text-slate-900">
                             {imp.file_name ||
                               t(
-                                "screens.products.importHistory.untitledImport"
+                                "screens.products.importHistory.untitledImport",
                               )}
                           </p>
                           <p className="text-xs text-slate-400">
@@ -241,7 +242,7 @@ export default function ImportHistoryList() {
                           <div className="flex items-center gap-2 text-sm font-semibold text-emerald-700">
                             <CheckCircle2 size={14} />
                             {t(
-                              "screens.products.importHistory.noIssuesInImport"
+                              "screens.products.importHistory.noIssuesInImport",
                             )}
                           </div>
                         )}

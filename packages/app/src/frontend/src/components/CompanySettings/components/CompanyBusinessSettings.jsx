@@ -1,7 +1,21 @@
-import { Save, PackageX, Receipt, X, Lock, Unlock } from "lucide-react";
+import { useEffect, useState } from "react";
+import {
+  Save,
+  PackageX,
+  Receipt,
+  X,
+  Lock,
+  Unlock,
+  Printer,
+  CheckCircle2,
+  Settings2,
+  DatabaseBackup,
+} from "lucide-react";
 import useUpdateCompanySettings from "../hooks/useUpdateCompanySettings";
 import { useTranslation } from "react-i18next";
 import { ToastContainer } from "react-toastify";
+import PrinterSettingsModal from "./PrinterSettingsModal";
+import BackupSettingsModal from "./BackupSettingsModal";
 
 function Toggle({ checked, onChange }) {
   return (
@@ -39,6 +53,36 @@ export default function CompanyBusinessSettings() {
     loading,
   } = useUpdateCompanySettings();
 
+  const [printerModalOpen, setPrinterModalOpen] = useState(false);
+  const [defaultPrinterName, setDefaultPrinterName] = useState(null);
+  const [backupModalOpen, setBackupModalOpen] = useState(false);
+
+  // Lightweight standalone check — deliberately NOT using the full
+  // usePrinterSettings hook here, since this row only needs to know
+  // "is a default printer configured", not the whole detect/test/save
+  // machinery the modal needs.
+  const refreshPrinterStatus = async () => {
+    if (!window.api) return;
+    try {
+      const res = await window.api.getPrinterSettings();
+      const defaultPrinter = res?.success
+        ? res.data.find((p) => p.is_default)
+        : null;
+      setDefaultPrinterName(defaultPrinter?.device_name || null);
+    } catch (err) {
+      console.error("Failed to check printer status:", err);
+    }
+  };
+
+  useEffect(() => {
+    refreshPrinterStatus();
+  }, []);
+
+  const closePrinterModal = () => {
+    setPrinterModalOpen(false);
+    refreshPrinterStatus(); // pick up any change made while the modal was open
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-screen text-gray-500 text-lg">
@@ -59,7 +103,7 @@ export default function CompanyBusinessSettings() {
           <p className="text-gray-500 mt-2">
             {t(
               "screens.company.businessSettingsSubtitle",
-              "Rules that shape how sales and POS behave across the app."
+              "Rules that shape how sales and POS behave across the app.",
             )}
           </p>
         </div>
@@ -76,13 +120,13 @@ export default function CompanyBusinessSettings() {
                   <p className="text-sm font-bold text-gray-800">
                     {t(
                       "screens.company.allowNegativeStock",
-                      "Allow selling out-of-stock items"
+                      "Allow selling out-of-stock items",
                     )}
                   </p>
                   <p className="mt-0.5 text-xs text-gray-500">
                     {t(
                       "screens.company.allowNegativeStockHint",
-                      "When off, the POS and manual sales block checkout on items with zero stock."
+                      "When off, the POS and manual sales block checkout on items with zero stock.",
                     )}
                   </p>
                 </div>
@@ -102,13 +146,13 @@ export default function CompanyBusinessSettings() {
                   <p className="text-sm font-bold text-gray-800">
                     {t(
                       "screens.company.minimumStock",
-                      "Minimum stock threshold"
+                      "Minimum stock threshold",
                     )}
                   </p>
                   <p className="mt-0.5 text-xs text-gray-500">
                     {t(
                       "screens.company.minimumStockHint",
-                      "Products at or below this quantity are flagged as low stock on the dashboard."
+                      "Products at or below this quantity are flagged as low stock on the dashboard.",
                     )}
                   </p>
                 </div>
@@ -139,7 +183,7 @@ export default function CompanyBusinessSettings() {
                   <p className="mt-0.5 text-xs text-gray-500">
                     {t(
                       "screens.company.posTaxModeHint",
-                      "Choose whether the cashier can pick invoice taxes freely, or the taxes are fixed by you and applied automatically."
+                      "Choose whether the cashier can pick invoice taxes freely, or the taxes are fixed by you and applied automatically.",
                     )}
                   </p>
 
@@ -156,7 +200,7 @@ export default function CompanyBusinessSettings() {
                       <Unlock size={13} />
                       {t(
                         "screens.company.taxModeManual",
-                        "Manual — cashier picks"
+                        "Manual — cashier picks",
                       )}
                     </button>
                     <button
@@ -171,7 +215,7 @@ export default function CompanyBusinessSettings() {
                       <Lock size={13} />
                       {t(
                         "screens.company.taxModeFixed",
-                        "Fixed — locked by owner"
+                        "Fixed — locked by owner",
                       )}
                     </button>
                   </div>
@@ -181,7 +225,7 @@ export default function CompanyBusinessSettings() {
                       <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-wide text-emerald-700">
                         {t(
                           "screens.company.defaultPosTaxes",
-                          "Default taxes applied to every POS sale"
+                          "Default taxes applied to every POS sale",
                         )}
                       </label>
 
@@ -209,7 +253,7 @@ export default function CompanyBusinessSettings() {
                         value=""
                         onChange={(e) => {
                           const selected = taxes.find(
-                            (tx) => tx.id === Number(e.target.value)
+                            (tx) => tx.id === Number(e.target.value),
                           );
                           if (selected) addDefaultPosTax(selected);
                         }}
@@ -218,7 +262,7 @@ export default function CompanyBusinessSettings() {
                         <option value="">
                           {t(
                             "screens.company.addDefaultTax",
-                            "Add a default tax"
+                            "Add a default tax",
                           )}
                         </option>
                         {taxes
@@ -227,8 +271,8 @@ export default function CompanyBusinessSettings() {
                               (tx.category === "invoice" ||
                                 tx.category === "both") &&
                               !(form.default_pos_taxes || []).some(
-                                (applied) => applied.tax_id === tx.id
-                              )
+                                (applied) => applied.tax_id === tx.id,
+                              ),
                           )
                           .map((tx) => (
                             <option key={tx.id} value={tx.id}>
@@ -240,6 +284,70 @@ export default function CompanyBusinessSettings() {
                   )}
                 </div>
               </div>
+            </div>
+
+            {/* Receipt printer — trigger row, opens PrinterSettingsModal */}
+            <div className="flex items-center justify-between gap-4 rounded-2xl border border-gray-100 bg-gray-50/60 p-4">
+              <div className="flex items-start gap-3">
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600">
+                  <Printer size={17} />
+                </span>
+                <div>
+                  <p className="text-sm font-bold text-gray-800">
+                    {t("screens.printers.rowTitle", "Receipt printer")}
+                  </p>
+                  <p className="mt-0.5 flex items-center gap-1.5 text-xs">
+                    {defaultPrinterName ? (
+                      <>
+                        <CheckCircle2 size={13} className="text-emerald-600" />
+                        <span className="font-bold text-emerald-700">
+                          {defaultPrinterName}
+                        </span>
+                      </>
+                    ) : (
+                      <span className="text-gray-500">
+                        {t("screens.printers.notSetUp", "Not set up yet")}
+                      </span>
+                    )}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPrinterModalOpen(true)}
+                className="flex items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-bold text-gray-700 transition hover:bg-gray-50"
+              >
+                <Settings2 size={14} />
+                {t("screens.printers.manage", "Manage")}
+              </button>
+            </div>
+
+            {/* Database backups — trigger row, opens BackupSettingsModal */}
+            <div className="flex items-center justify-between gap-4 rounded-2xl border border-gray-100 bg-gray-50/60 p-4">
+              <div className="flex items-start gap-3">
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600">
+                  <DatabaseBackup size={17} />{" "}
+                </span>
+                <div>
+                  <p className="text-sm font-bold text-gray-800">
+                    {t("screens.backup.rowTitle", "Database backups")}
+                  </p>
+                  <p className="mt-0.5 text-xs text-gray-500">
+                    {t(
+                      "screens.backup.rowHint",
+                      "Back up locally, on a schedule or on demand.",
+                    )}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setBackupModalOpen(true)}
+                className="flex items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-bold text-gray-700 transition hover:bg-gray-50"
+              >
+                <Settings2 size={14} />
+                {t("screens.backup.manage", "Manage")}
+              </button>
             </div>
           </div>
 
@@ -255,6 +363,17 @@ export default function CompanyBusinessSettings() {
           </div>
         </div>
       </div>
+
+      <PrinterSettingsModal
+        isOpen={printerModalOpen}
+        onClose={closePrinterModal}
+      />
+
+      <BackupSettingsModal
+        isOpen={backupModalOpen}
+        onClose={() => setBackupModalOpen(false)}
+      />
+
       <ToastContainer />
     </div>
   );

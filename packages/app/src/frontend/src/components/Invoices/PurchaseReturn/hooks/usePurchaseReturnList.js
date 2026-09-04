@@ -9,6 +9,7 @@ const DEFAULT_FILTERS = {
   minTotal: "",
   maxTotal: "",
   taxIds: [],
+  tagIds: [],
 };
 
 const usePurchaseReturnList = () => {
@@ -28,6 +29,9 @@ const usePurchaseReturnList = () => {
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
   const [suppliers, setSuppliers] = useState([]);
   const [taxes, setTaxes] = useState([]);
+
+  const [allTags, setAllTags] = useState([]);
+  const [tagsByReturn, setTagsByReturn] = useState({});
 
   const [openPaymentModel, setOpenPaymentModel] = useState(false);
   const [selecteInvoice, setSelecteInvoice] = useState(null);
@@ -61,6 +65,7 @@ const usePurchaseReturnList = () => {
         minTotal: filters.minTotal !== "" ? filters.minTotal : undefined,
         maxTotal: filters.maxTotal !== "" ? filters.maxTotal : undefined,
         taxIds: filters.taxIds?.length ? filters.taxIds : undefined,
+        tagIds: filters.tagIds?.length ? filters.tagIds : undefined,
       });
 
       setPurchaseReturns(res?.data || []);
@@ -94,6 +99,27 @@ const usePurchaseReturnList = () => {
       .catch(() => setTaxes([]));
   }, [api]);
 
+  useEffect(() => {
+    if (!api?.listTags) return;
+    api
+      .listTags("purchase_return")
+      .then((res) => setAllTags(res.success ? res.data : []))
+      .catch(() => setAllTags([]));
+  }, [api]);
+
+  useEffect(() => {
+    if (!api?.getEntitiesTags) return;
+
+    if (purchaseReturns.length === 0) {
+      setTagsByReturn({});
+      return;
+    }
+    const ids = purchaseReturns.map((inv) => inv.id);
+    api.getEntitiesTags("purchase_return", ids).then((res) => {
+      if (res.success) setTagsByReturn(res.data);
+    });
+  }, [purchaseReturns, api]);
+
   const deletePurchaseReturn = async (id) => {
     try {
       setSaving(true);
@@ -106,7 +132,7 @@ const usePurchaseReturnList = () => {
         err?.message ||
           t("errors.deleteFailed", {
             field: t("ui.purchaseReturn"),
-          })
+          }),
       );
     } finally {
       setSaving(false);
@@ -140,6 +166,8 @@ const usePurchaseReturnList = () => {
     clearFilters,
     suppliers,
     taxes,
+    allTags,
+    tagsByReturn,
   };
 };
 

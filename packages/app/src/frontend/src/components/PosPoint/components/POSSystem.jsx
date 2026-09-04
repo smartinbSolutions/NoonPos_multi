@@ -58,6 +58,7 @@ export default function POSSystem() {
     selectedCustomerId,
     setSelectedCustomerId,
     loading,
+    productsLoading,
     checkingOut,
     error,
     subtotal,
@@ -91,6 +92,10 @@ export default function POSSystem() {
     itemTaxSummary,
     itemDiscountSummary,
     itemsNetTotal,
+
+    allTags,
+    selectedTagIds,
+    toggleTagFilter,
   } = usePosCheckout({ weight });
   const { money, primaryCurrency } = usePrimaryCurrency();
   const editingItem = cart.find((item) => item.id === editingItemId) || null;
@@ -176,7 +181,7 @@ export default function POSSystem() {
       const target = Number(newPrice || 0);
       const taxRate = Number(editingItem.tax_rate || 0);
       const catalogPrice = Number(
-        editingItem.catalog_price ?? editingItem.price
+        editingItem.catalog_price ?? editingItem.price,
       );
       const catalogInclusive =
         taxRate > 0 ? catalogPrice * (1 + taxRate / 100) : catalogPrice;
@@ -384,9 +389,41 @@ export default function POSSystem() {
               </div>
             )}
           </div>
+          {allTags.length > 0 && (
+            <div className="border-b border-stone-200/80 bg-white px-4 py-2.5">
+              <div className="flex flex-wrap gap-1.5">
+                {allTags.map((tag) => {
+                  const isSelected = selectedTagIds.includes(tag.id);
+                  return (
+                    <button
+                      key={tag.id}
+                      type="button"
+                      onClick={() => toggleTagFilter(tag.id)}
+                      className="rounded-full px-3 py-1.5 text-xs font-bold transition active:scale-95"
+                      style={
+                        isSelected
+                          ? {
+                              backgroundColor: tag.color || "#4663ff",
+                              color: "#fff",
+                            }
+                          : {
+                              backgroundColor: `${tag.color || "#4663ff"}14`,
+                              color: tag.color || "#4663ff",
+                            }
+                      }
+                    >
+                      {tag.name}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           {/* PRODUCTS LIST */}
-          <div className="flex-1 p-4">
+          <div
+            className={`flex-1 p-4 transition-opacity ${productsLoading ? "opacity-50" : ""}`}
+          >
             {products.length > 0 ? (
               <div className="grid gap-3.5 sm:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
                 {products.map((product) => {
@@ -408,7 +445,7 @@ export default function POSSystem() {
                         addToCart(
                           product,
                           activeWeight || 1,
-                          Boolean(activeWeight)
+                          Boolean(activeWeight),
                         );
                         setActionError("");
                       }}

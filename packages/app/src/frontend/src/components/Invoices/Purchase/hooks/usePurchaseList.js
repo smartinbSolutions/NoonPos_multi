@@ -11,6 +11,7 @@ const DEFAULT_FILTERS = {
   minTotal: "",
   maxTotal: "",
   taxIds: [],
+  tagIds: [],
 };
 
 const usePurchaseList = () => {
@@ -29,6 +30,8 @@ const usePurchaseList = () => {
 
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
   const [taxes, setTaxes] = useState([]);
+  const [allTags, setAllTags] = useState([]);
+  const [tagsByInvoice, setTagsByInvoice] = useState({});
   const [suppliers, setSuppliers] = useState([]);
 
   const [openPaymentModel, setOpenPaymentModel] = useState(false);
@@ -63,6 +66,7 @@ const usePurchaseList = () => {
         minTotal: filters.minTotal !== "" ? filters.minTotal : undefined,
         maxTotal: filters.maxTotal !== "" ? filters.maxTotal : undefined,
         taxIds: filters.taxIds?.length ? filters.taxIds : undefined,
+        tagIds: filters.tagIds?.length ? filters.tagIds : undefined,
       });
 
       setPurchaseInvoices(res?.data || []);
@@ -88,6 +92,27 @@ const usePurchaseList = () => {
     refetch();
   }, [refetch]);
 
+  useEffect(() => {
+    if (!api?.listTags) return;
+    api
+      .listTags("purchase_invoice")
+      .then((res) => setAllTags(res.success ? res.data : []))
+      .catch(() => setAllTags([]));
+  }, [api]);
+
+  useEffect(() => {
+    if (!api?.getEntitiesTags) return;
+
+    if (purchaseInvoices.length === 0) {
+      setTagsByInvoice({});
+      return;
+    }
+    const ids = purchaseInvoices.map((inv) => inv.id);
+    api.getEntitiesTags("purchase_invoice", ids).then((res) => {
+      if (res.success) setTagsByInvoice(res.data);
+    });
+  }, [purchaseInvoices, api]);
+
   // Loaded once for the filter dropdown — full list, not paginated.
   useEffect(() => {
     if (!api?.getSuppliers) return;
@@ -105,19 +130,19 @@ const usePurchaseList = () => {
     if (code.includes("CANNOT_DELETE_INVOICE_WITH_RETURN")) {
       return t(
         "screens.errors.cannotDeleteInvoiceWithReturn",
-        "This invoice has a return and cannot be deleted."
+        "This invoice has a return and cannot be deleted.",
       );
     }
     if (code.includes("CANNOT_DELETE_PAID_INVOICE")) {
       return t(
         "screens.errors.cannotDeletePaidInvoice",
-        "This invoice has a payment and cannot be deleted."
+        "This invoice has a payment and cannot be deleted.",
       );
     }
     if (code.includes("PURCHASE INVOICE NOT FOUND")) {
       return t(
         "screens.errors.invoiceNotFound",
-        "This invoice no longer exists."
+        "This invoice no longer exists.",
       );
     }
 
@@ -137,7 +162,7 @@ const usePurchaseList = () => {
       }
 
       toast.success(
-        t("screens.invoices.deletedSuccessfully", "Invoice deleted.")
+        t("screens.invoices.deletedSuccessfully", "Invoice deleted."),
       );
       await refetch();
     } catch (err) {
@@ -174,6 +199,8 @@ const usePurchaseList = () => {
     clearFilters,
     suppliers,
     taxes,
+    allTags,
+    tagsByInvoice,
   };
 };
 

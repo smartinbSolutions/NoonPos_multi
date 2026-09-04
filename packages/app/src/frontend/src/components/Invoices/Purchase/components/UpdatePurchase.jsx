@@ -26,6 +26,7 @@ import useSuppliersList from "../../../Supplier/hooks/useSuppliersList";
 import SupplierFormModal from "./SupplierFormModal";
 import { normalizeDigits } from "../../../../Global/FormatNumber";
 import NumberInput from "../../../../Global/NumberInput";
+import TagPickerField from "../../../Tags/components/TagPickerField";
 
 const inputClass =
   "h-9 w-full rounded-xl border border-[#e1e7fb] bg-white px-3 text-sm font-semibold text-slate-900 outline-none transition placeholder:font-medium placeholder:text-slate-350 focus:border-[#4663ff] focus:ring-[3px] focus:ring-[#4663ff]/12 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400";
@@ -107,6 +108,8 @@ export default function UpdatePurchase() {
     products,
     suppliers,
     taxes,
+    tagIds,
+    setTagIds,
     addItem,
     removeItem,
     updateItem,
@@ -142,7 +145,7 @@ export default function UpdatePurchase() {
   const [deleteItemIndex, setDeleteItemIndex] = useState(null);
 
   const [revealedItemDiscounts, setRevealedItemDiscounts] = useState(
-    () => new Set()
+    () => new Set(),
   );
   const [revealedItemNotes, setRevealedItemNotes] = useState(() => new Set());
   const [invoiceDiscountRevealed, setInvoiceDiscountRevealed] = useState(false);
@@ -159,15 +162,15 @@ export default function UpdatePurchase() {
       new Set(
         items
           .map((item, i) => (Number(item.discount_rate) > 0 ? i : null))
-          .filter((i) => i !== null)
-      )
+          .filter((i) => i !== null),
+      ),
     );
     setRevealedItemNotes(
       new Set(
         items
           .map((item, i) => (item.description ? i : null))
-          .filter((i) => i !== null)
-      )
+          .filter((i) => i !== null),
+      ),
     );
     setInvoiceDiscountRevealed(Number(invoice?.discount_rate) > 0);
     setInvoiceTaxRevealed((invoice?.taxes || []).length > 0);
@@ -299,7 +302,7 @@ export default function UpdatePurchase() {
               {hasReturn
                 ? t(
                     "screens.invoices.lockedAfterReturn",
-                    "This invoice has a return and can no longer be edited."
+                    "This invoice has a return and can no longer be edited.",
                   )
                 : t("screens.invoices.lockedAfterPayment")}
             </span>
@@ -345,6 +348,31 @@ export default function UpdatePurchase() {
                     }
                   />
                 </div>
+              </div>
+            </section>
+
+            {/* Tags */}
+            <section className={panelClass}>
+              <AccentRule colorClass="bg-pink-500" />
+              <div className={panelBodyClass}>
+                <div className="mb-3 flex items-center gap-2.5">
+                  <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-pink-50 text-pink-600">
+                    <Tag size={15} />
+                  </span>
+                  <h3 className="text-[13px] font-black text-slate-950">
+                    {t("screens.tags.title")}
+                  </h3>
+                </div>
+
+                <TagPickerField
+                  scope="purchase_invoice"
+                  entityType="purchase_invoice"
+                  entityId={invoice?.id}
+                  selectedIds={tagIds}
+                  onChange={setTagIds}
+                  skipInitialFetch
+                  disabled={isLocked}
+                />
               </div>
             </section>
 
@@ -594,7 +622,7 @@ export default function UpdatePurchase() {
                                 ?.filter(
                                   (tax) =>
                                     tax.category === "product" ||
-                                    tax.category === "both"
+                                    tax.category === "both",
                                 )
                                 .map((tax) => (
                                   <option key={tax.id} value={tax.id}>
@@ -824,7 +852,7 @@ export default function UpdatePurchase() {
                           value=""
                           onChange={(e) => {
                             const selected = taxes.find(
-                              (tax) => tax.id === Number(e.target.value)
+                              (tax) => tax.id === Number(e.target.value),
                             );
                             if (selected) addInvoiceTax(selected);
                           }}
@@ -832,7 +860,7 @@ export default function UpdatePurchase() {
                           <option value="">
                             {t(
                               "screens.invoices.addAnotherTax",
-                              "Add another tax"
+                              "Add another tax",
                             )}
                           </option>
                           {taxes
@@ -841,8 +869,8 @@ export default function UpdatePurchase() {
                                 (tax.category === "invoice" ||
                                   tax.category === "both") &&
                                 !(invoice.taxes || []).some(
-                                  (applied) => applied.id === tax.id
-                                )
+                                  (applied) => applied.id === tax.id,
+                                ),
                             )
                             .map((tax) => (
                               <option key={tax.id} value={tax.id}>
@@ -1054,7 +1082,7 @@ export default function UpdatePurchase() {
               const result = await submitProduct(form);
               const targetIndex = items.findIndex((i) => !i.product_id);
               const matchedTax = productTaxes?.find(
-                (tx) => tx.id === form.tax_id
+                (tx) => tx.id === form.tax_id,
               );
 
               if (targetIndex === -1) {

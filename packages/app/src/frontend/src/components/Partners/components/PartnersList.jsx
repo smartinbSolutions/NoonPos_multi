@@ -8,6 +8,8 @@ import AddPayment from "../../Cash/Payment/components/AddPayment";
 import ContactListHeader from "../../../Global/Contactlistheader";
 import Pagination from "../../../Global/Pagination";
 import { ToastContainer } from "react-toastify";
+import TagList from "../../Tags/components/TagList";
+import TagPickerField from "../../Tags/components/TagPickerField";
 
 const BalanceCell = ({ deposited, withdrawn, balance, money, t }) => {
   const isSettled = balance <= 0;
@@ -62,6 +64,7 @@ const PartnersList = () => {
     refetch,
     openPaymentModel,
     setOpenPaymentModel,
+    remainingPercentage,
 
     // pagination
     page,
@@ -70,6 +73,7 @@ const PartnersList = () => {
     setLimit,
     total,
     totalPages,
+    tagsByPartner,
   } = usePartnersList();
   const { money } = usePrimaryCurrency();
 
@@ -86,7 +90,7 @@ const PartnersList = () => {
     return partners.filter((s) =>
       `${s.name} ${s.phone} ${s.address} ${s.total_deposit} ${s.total_withdrawal}`
         .toLowerCase()
-        .includes(search.toLowerCase())
+        .includes(search.toLowerCase()),
     );
   }, [partners, search]);
 
@@ -111,6 +115,7 @@ const PartnersList = () => {
             submitLabel={t("screens.contacts.addPartner")}
             t={t}
             type="partner"
+            remainingPercentage={remainingPercentage}
           />
 
           {filteredpartners.length === 0 ? (
@@ -122,11 +127,17 @@ const PartnersList = () => {
               <table className="w-full min-w-[720px] text-sm">
                 <thead className="bg-[#f8faff] text-xs font-bold uppercase  text-slate-500">
                   <tr>
-                    <th className="px-5 py-4 text-start">{t("ui.name")}</th>
-                    <th className="px-5 py-4 text-start">{t("ui.phone")}</th>
-                    <th className="px-5 py-4 text-start">{t("ui.address")}</th>
-                    <th className="px-5 py-4 text-start">{t("ui.balance")}</th>
-                    <th className="px-5 py-4 text-start">
+                    <th className="px-5 py-4 text-center">{t("ui.name")}</th>
+                    <th className="px-5 py-4 text-center">{t("ui.phone")}</th>
+                    <th className="px-5 py-4 text-center">{t("ui.address")}</th>
+                    <th className="px-5 py-4 text-center">{t("ui.balance")}</th>
+                    <th className="px-5 py-4 text-center">
+                      {t("ui.percentage")}
+                    </th>
+                    <th className="px-5 py-4 text-center">
+                      {t("screens.tags.title") || "Tags"}
+                    </th>
+                    <th className="px-5 py-4 text-center">
                       {t("common.actions")}
                     </th>
                   </tr>
@@ -144,55 +155,114 @@ const PartnersList = () => {
                     if (editingId === partner.id) {
                       return (
                         <tr key={partner.id} className="bg-[#f8faff]">
-                          <td className="px-5 py-3" colSpan={5}>
-                            <form
-                              onSubmit={submitEdit}
-                              className="flex flex-wrap items-center gap-2"
-                            >
-                              <input
-                                required
-                                value={editing.name}
-                                onChange={(e) =>
-                                  setEditing({
-                                    ...editing,
-                                    name: e.target.value,
-                                  })
-                                }
-                                className={`${inputClass} flex-1 min-w-[160px]`}
-                                placeholder={t("ui.name")}
-                              />
-                              <input
-                                value={editing.phone}
-                                onChange={(e) =>
-                                  setEditing({
-                                    ...editing,
-                                    phone: e.target.value,
-                                  })
-                                }
-                                className={`${inputClass} flex-1 min-w-[140px]`}
-                                placeholder={t("ui.phone")}
-                              />
-                              <input
-                                value={editing.address}
-                                onChange={(e) =>
-                                  setEditing({
-                                    ...editing,
-                                    address: e.target.value,
-                                  })
-                                }
-                                className={`${inputClass} flex-1 min-w-[160px]`}
-                                placeholder={t("ui.address")}
-                              />
-                              <button className="flex items-center gap-1.5 rounded-xl bg-[#4663ff] px-3 py-2 text-xs font-bold text-white hover:bg-[#3854e8]">
-                                {t("common.save")}
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => setEditingId(null)}
-                                className="rounded-xl border border-[#dbe4ff] bg-white p-2 text-slate-500 hover:bg-[#eef3ff]"
-                              >
-                                <span>&times;</span>
-                              </button>
+                          <td className="px-5 py-4" colSpan={6}>
+                            <form onSubmit={submitEdit} className="space-y-3">
+                              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                                <div className="space-y-1">
+                                  <label className="text-[11px] font-bold uppercase tracking-wide text-slate-400">
+                                    {t("ui.name")}
+                                  </label>
+                                  <input
+                                    required
+                                    value={editing.name}
+                                    onChange={(e) =>
+                                      setEditing({
+                                        ...editing,
+                                        name: e.target.value,
+                                      })
+                                    }
+                                    className={`${inputClass} w-full`}
+                                    placeholder={t("ui.name")}
+                                  />
+                                </div>
+
+                                <div className="space-y-1">
+                                  <label className="text-[11px] font-bold uppercase tracking-wide text-slate-400">
+                                    {t("ui.phone")}
+                                  </label>
+                                  <input
+                                    value={editing.phone}
+                                    onChange={(e) =>
+                                      setEditing({
+                                        ...editing,
+                                        phone: e.target.value,
+                                      })
+                                    }
+                                    className={`${inputClass} w-full`}
+                                    placeholder={t("ui.phone")}
+                                  />
+                                </div>
+
+                                <div className="space-y-1">
+                                  <label className="text-[11px] font-bold uppercase tracking-wide text-slate-400">
+                                    {t("ui.address")}
+                                  </label>
+                                  <input
+                                    value={editing.address}
+                                    onChange={(e) =>
+                                      setEditing({
+                                        ...editing,
+                                        address: e.target.value,
+                                      })
+                                    }
+                                    className={`${inputClass} w-full`}
+                                    placeholder={t("ui.address")}
+                                  />
+                                </div>
+                              </div>
+                              <div className="space-y-1">
+                                <label className="text-[11px] font-bold uppercase tracking-wide text-slate-400">
+                                  {t("ui.percentage")}
+                                </label>
+                                <input
+                                  type="text"
+                                  inputMode="decimal"
+                                  value={editing.percentage}
+                                  onChange={(e) =>
+                                    setEditing({
+                                      ...editing,
+                                      percentage: e.target.value,
+                                    })
+                                  }
+                                  className={`${inputClass} w-full`}
+                                  placeholder="0"
+                                />
+                                <span className="text-[10px] text-slate-400">
+                                  {t("screens.contacts.maxPercentageAllowed", {
+                                    value:
+                                      remainingPercentage +
+                                      (editing.percentage || 0),
+                                  })}
+                                </span>
+                              </div>
+
+                              <div className="space-y-1">
+                                <label className="text-[11px] font-bold uppercase tracking-wide text-slate-400">
+                                  {t("screens.tags.title")}
+                                </label>
+                                <TagPickerField
+                                  scope="partner"
+                                  entityType="partner"
+                                  entityId={partner.id}
+                                  selectedIds={editing.tagIds || []}
+                                  onChange={(ids) =>
+                                    setEditing({ ...editing, tagIds: ids })
+                                  }
+                                />
+                              </div>
+
+                              <div className="flex items-center justify-end gap-2 border-t border-[#e5ebff] pt-3">
+                                <button
+                                  type="button"
+                                  onClick={() => setEditingId(null)}
+                                  className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-bold text-slate-500 transition hover:bg-slate-50"
+                                >
+                                  {t("common.cancel")}
+                                </button>
+                                <button className="rounded-xl bg-[#4663ff] px-4 py-2 text-xs font-bold text-white shadow-md shadow-[#4663ff]/20 transition hover:bg-[#3854e8]">
+                                  {t("common.save")}
+                                </button>
+                              </div>
                             </form>
                           </td>
                         </tr>
@@ -204,7 +274,7 @@ const PartnersList = () => {
                         key={partner.id}
                         className="transition hover:bg-[#f8faff]"
                       >
-                        <td className="px-5 py-3">
+                        <td className="px-5 py-3 text-center">
                           <div className="flex items-center gap-3">
                             <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#4663ff] text-xs font-bold text-white shadow-md shadow-[#4663ff]/20">
                               {partner.name?.charAt(0)?.toUpperCase() || "P"}
@@ -214,13 +284,13 @@ const PartnersList = () => {
                             </span>
                           </div>
                         </td>
-                        <td className="px-5 py-3 text-slate-500">
+                        <td className="px-5 py-3 text-slate-500 text-center">
                           {partner.phone || t("ui.noPhone")}
                         </td>
-                        <td className="px-5 py-3 max-w-[200px] truncate text-slate-500">
+                        <td className="px-5 py-3 max-w-[200px] truncate text-slate-500 text-center">
                           {partner.address || t("ui.noAddress")}
                         </td>
-                        <td className="px-5 py-3 text-start">
+                        <td className="px-5 py-3 text-center">
                           <BalanceCell
                             deposited={deposited}
                             withdrawn={withdrawn}
@@ -229,8 +299,17 @@ const PartnersList = () => {
                             t={t}
                           />
                         </td>
-                        <td className="px-5 py-3">
-                          <div className="flex justify-start gap-1">
+                        <td className="px-5 py-3 text-center font-bold text-slate-700">
+                          {partner.percentage ?? 0}%
+                        </td>
+                        <td className="px-5 py-3 text-center">
+                          <TagList
+                            tags={tagsByPartner[partner.id] || []}
+                            limit={2}
+                          />
+                        </td>
+                        <td className="px-5 py-3 text-center">
+                          <div className="flex justify-center gap-1">
                             <button
                               onClick={() =>
                                 navigate(`/payment/partner/${partner.id}`)

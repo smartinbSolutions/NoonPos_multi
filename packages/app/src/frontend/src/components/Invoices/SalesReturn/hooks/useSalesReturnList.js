@@ -10,6 +10,7 @@ const DEFAULT_FILTERS = {
   minTotal: "",
   maxTotal: "",
   taxIds: [],
+  tagIds: [],
 };
 
 const useSalesReturnList = () => {
@@ -30,6 +31,8 @@ const useSalesReturnList = () => {
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
   const [customers, setCustomers] = useState([]);
   const [taxes, setTaxes] = useState([]);
+  const [allTags, setAllTags] = useState([]);
+  const [tagsByReturn, setTagsByReturn] = useState({});
 
   const [openPaymentModel, setOpenPaymentModel] = useState(false);
   const [selectedInvoice, setSelectedInvoice] = useState(null);
@@ -64,6 +67,7 @@ const useSalesReturnList = () => {
         minTotal: filters.minTotal !== "" ? filters.minTotal : undefined,
         maxTotal: filters.maxTotal !== "" ? filters.maxTotal : undefined,
         taxIds: filters.taxIds?.length ? filters.taxIds : undefined,
+        tagIds: filters.tagIds?.length ? filters.tagIds : undefined,
       });
 
       setSalesReturns(res?.data || []);
@@ -97,6 +101,27 @@ const useSalesReturnList = () => {
       .catch(() => setTaxes([]));
   }, [api]);
 
+  useEffect(() => {
+    if (!api?.listTags) return;
+    api
+      .listTags("sales_return")
+      .then((res) => setAllTags(res.success ? res.data : []))
+      .catch(() => setAllTags([]));
+  }, [api]);
+
+  useEffect(() => {
+    if (!api?.getEntitiesTags) return;
+
+    if (salesReturns.length === 0) {
+      setTagsByReturn({});
+      return;
+    }
+    const ids = salesReturns.map((inv) => inv.id);
+    api.getEntitiesTags("sales_return", ids).then((res) => {
+      if (res.success) setTagsByReturn(res.data);
+    });
+  }, [salesReturns, api]);
+
   const deleteSalesReturn = async (id) => {
     try {
       setSaving(true);
@@ -109,7 +134,7 @@ const useSalesReturnList = () => {
         err?.message ||
           t("errors.deleteFailed", {
             field: t("ui.salesReturn"),
-          })
+          }),
       );
     } finally {
       setSaving(false);
@@ -139,6 +164,8 @@ const useSalesReturnList = () => {
     clearFilters,
     customers,
     taxes,
+    allTags,
+    tagsByReturn,
   };
 };
 

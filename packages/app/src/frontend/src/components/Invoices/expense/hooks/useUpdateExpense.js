@@ -63,6 +63,7 @@ const useUpdateExpense = () => {
   const [category, setCategory] = useState([]);
   const [suppliers, setSuppliers] = useState([]);
   const [taxes, setTaxes] = useState([]);
+  const [tagIds, setTagIds] = useState([]);
 
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -112,14 +113,20 @@ const useUpdateExpense = () => {
           rate: t.tax_rate,
         })),
       });
+
+      const tagsRes = await api.getEntityTags("expense", id);
+      if (tagsRes.success) {
+        setTagIds(tagsRes.data.map((tag) => tag.id));
+      }
+
       setItems(
         (res.items || []).map((item) =>
           recalcItem({
             ...emptyItem,
             ...item,
             tax_capable: Boolean(item.tax_id),
-          })
-        )
+          }),
+        ),
       );
     } catch (err) {
       setError(err?.message || t("errors.loadExpenseFailed"));
@@ -133,7 +140,7 @@ const useUpdateExpense = () => {
       { id: NO_SUPPLIER, name: t("ui.noSupplier") },
       ...(Array.isArray(suppliers?.data) ? suppliers?.data : []),
     ],
-    [suppliers, t]
+    [suppliers, t],
   );
 
   useEffect(() => {
@@ -404,6 +411,8 @@ const useUpdateExpense = () => {
           throw new Error(res?.error || t("errors.updateFailed"));
         }
 
+        await api.setEntityTags("expense", id, tagIds);
+
         toast.success(t("success.updated", { field: t("ui.expense") }));
         navigate("/expense");
         return res;
@@ -426,12 +435,14 @@ const useUpdateExpense = () => {
       navigate,
       t,
       user,
-    ]
+      tagIds,
+    ],
   );
 
   const reset = () => {
     setInvoice(makeEmptyInvoice());
     setItems([emptyItem]);
+    setTagIds([]);
     setError("");
   };
 
@@ -451,6 +462,8 @@ const useUpdateExpense = () => {
     category,
     supplierOptions,
     taxes,
+    tagIds,
+    setTagIds,
 
     loading,
     saving,

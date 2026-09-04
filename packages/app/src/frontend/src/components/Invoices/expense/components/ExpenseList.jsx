@@ -26,6 +26,7 @@ import Pagination from "../../../../Global/Pagination";
 import HoverTooltip from "../../../../Global/HoverTooltip";
 import DropdownMenu from "../../../../Global/DropdownMenu";
 import GoTo from "../../../../Global/GoTo";
+import TagList from "../../../Tags/components/TagList";
 
 function BreakdownTooltip({ trigger, rows }) {
   const hasAnyValue = rows.some((r) => Number(r.value) > 0);
@@ -46,7 +47,7 @@ function BreakdownTooltip({ trigger, rows }) {
                 {row.display}
               </span>
             </div>
-          )
+          ),
       )}
     />
   );
@@ -133,6 +134,9 @@ const ExpenseList = () => {
     filters,
     setFilters,
     clearFilters,
+
+    allTags,
+    tagsByExpense,
   } = useExpenseList();
 
   const { money } = usePrimaryCurrency();
@@ -162,7 +166,7 @@ const ExpenseList = () => {
       setSavingPdfId(expenseId);
       const res = await window.api.saveDocumentPdf(
         `/print-expense/${expenseId}`,
-        `expense-${expenseId}.pdf`
+        `expense-${expenseId}.pdf`,
       );
       if (!res.success && res.error !== "CANCELED") {
         setActionError(t("screens.invoices.pdfFailed", "Failed to save PDF."));
@@ -196,11 +200,11 @@ const ExpenseList = () => {
 
   const totalNet = expenses.reduce(
     (sum, inv) => sum + Number(inv?.net_total || 0),
-    0
+    0,
   );
   const totalTax = expenses.reduce(
     (sum, inv) => sum + Number(inv?.total_tax_value ?? inv?.taxValue ?? 0),
-    0
+    0,
   );
 
   const unpaidCount = expenses.filter((inv) => inv.status !== "paid").length;
@@ -283,6 +287,15 @@ const ExpenseList = () => {
                 label: `${tax.name} (${tax.rate}%)`,
               })),
             },
+            {
+              type: "multiselect",
+              name: "tagIds",
+              label: t("screens.tags.title"),
+              options: allTags.map((tag) => ({
+                value: tag.id,
+                label: tag.name,
+              })),
+            },
             { type: "date", name: "startDate", label: t("filters.dateFrom") },
             { type: "date", name: "endDate", label: t("filters.dateTo") },
             { type: "number", name: "minTotal", label: t("filters.minTotal") },
@@ -311,6 +324,9 @@ const ExpenseList = () => {
                   <th className="px-5 py-4 text-center">{t("ui.tax")}</th>
                   <th className="px-5 py-4 text-center">{t("ui.net")}</th>
                   <th className="px-5 py-4 text-center">{t("ui.status")}</th>
+                  <th className="px-5 py-4 text-center">
+                    {t("screens.tags.title")}
+                  </th>
                   <th className="px-5 py-4 text-center w-12" />
                 </tr>
               </thead>
@@ -335,13 +351,14 @@ const ExpenseList = () => {
                     const itemTax = Number(exp.item_tax_total || 0);
                     const invoiceTax = Number(exp.taxValue || 0);
                     const totalTaxValue = Number(
-                      exp.total_tax_value ?? itemTax + invoiceTax
+                      exp.total_tax_value ?? itemTax + invoiceTax,
                     );
 
                     const itemDiscount = Number(exp.item_discount_total || 0);
                     const invoiceDiscount = Number(exp.discount || 0);
                     const totalDiscountValue = Number(
-                      exp.total_discount_value ?? itemDiscount + invoiceDiscount
+                      exp.total_discount_value ??
+                        itemDiscount + invoiceDiscount,
                     );
 
                     const canEditDelete = exp.status === "unpaid";
@@ -470,6 +487,13 @@ const ExpenseList = () => {
                             remainingAmount={exp.remaining_amount}
                             money={money}
                             t={t}
+                          />
+                        </td>
+
+                        <td className="px-5 py-4 text-center">
+                          <TagList
+                            tags={tagsByExpense[exp.id] || []}
+                            limit={2}
                           />
                         </td>
 

@@ -9,6 +9,7 @@ const emptyFilters = {
   minTotal: "",
   maxTotal: "",
   taxIds: [],
+  tagIds: [],
 };
 
 export default function useSalesQuotationList() {
@@ -28,6 +29,8 @@ export default function useSalesQuotationList() {
 
   const [customers, setCustomers] = useState([]);
   const [taxes, setTaxes] = useState([]);
+  const [allTags, setAllTags] = useState([]);
+  const [tagsByQuotation, setTagsByQuotation] = useState({});
 
   const fetchQuotations = useCallback(async () => {
     if (!api) return;
@@ -62,6 +65,17 @@ export default function useSalesQuotationList() {
     }
   }, [api]);
 
+  const fetchAllTags = useCallback(async () => {
+    if (!api?.listTags) return;
+
+    try {
+      const res = await api.listTags("sales_quotation");
+      setAllTags(res.success ? res.data : []);
+    } catch (err) {
+      console.error("Failed to load tags:", err);
+    }
+  }, [api]);
+
   useEffect(() => {
     fetchQuotations();
   }, [fetchQuotations]);
@@ -69,6 +83,26 @@ export default function useSalesQuotationList() {
   useEffect(() => {
     fetchLookups();
   }, [fetchLookups]);
+
+  useEffect(() => {
+    fetchAllTags();
+  }, [fetchAllTags]);
+
+  // Batch-fetch tags for exactly the quotations on the current page — one
+  // call per page load instead of one call per row.
+  useEffect(() => {
+    if (!api?.getEntitiesTags) return;
+
+    if (salesQuotations.length === 0) {
+      setTagsByQuotation({});
+      return;
+    }
+
+    const ids = salesQuotations.map((q) => q.id);
+    api.getEntitiesTags("sales_quotation", ids).then((res) => {
+      if (res.success) setTagsByQuotation(res.data);
+    });
+  }, [salesQuotations, api]);
 
   const refetch = () => {
     fetchQuotations();
@@ -119,5 +153,7 @@ export default function useSalesQuotationList() {
     clearFilters,
     customers,
     taxes,
+    allTags,
+    tagsByQuotation,
   };
 }

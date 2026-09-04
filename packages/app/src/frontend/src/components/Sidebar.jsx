@@ -87,6 +87,17 @@ export default function Sidebar() {
       ],
     },
     {
+      title: "navigation.manufacturing",
+      icon: <Factory size={18} />,
+      children: [
+        { title: "navigation.boms", path: "/boms" },
+        {
+          title: "navigation.manufacturingOrders",
+          path: "/manufacturing-orders",
+        },
+      ],
+    },
+    {
       title: "navigation.partners",
       icon: <Handshake size={18} />,
       path: "/partners",
@@ -106,6 +117,7 @@ export default function Sidebar() {
         { title: "navigation.units", path: "/unit" },
         { title: "navigation.currency", path: "/currency" },
         { title: "navigation.taxes", path: "/tax" },
+        { title: "navigation.tags", path: "/tags" },
         ...(user?.role === "admin"
           ? [{ title: "navigation.users", path: "/users" }]
           : []),
@@ -122,7 +134,7 @@ export default function Sidebar() {
       if (!item.children) return;
 
       const match = item.children.some((c) =>
-        location.pathname.startsWith(c.path)
+        location.pathname.startsWith(c.path),
       );
 
       if (match) newOpen[index] = true;
@@ -285,7 +297,7 @@ export default function Sidebar() {
           }
 
           const isActiveGroup = item.children.some((c) =>
-            location.pathname.startsWith(c.path)
+            location.pathname.startsWith(c.path),
           );
 
           return (

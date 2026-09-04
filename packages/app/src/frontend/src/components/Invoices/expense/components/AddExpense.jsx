@@ -12,6 +12,7 @@ import {
   X,
   Percent,
   StickyNote,
+  Tag,
 } from "lucide-react";
 import { toast } from "react-toastify";
 import useAddExpense from "../hooks/useAddExpense";
@@ -25,6 +26,7 @@ import useSuppliersList from "../../../Supplier/hooks/useSuppliersList";
 import SupplierFormModal from "../../Purchase/components/SupplierFormModal";
 import DropdownMenu from "../../../../Global/DropdownMenu";
 import NumberInput from "../../../../Global/NumberInput";
+import TagPickerField from "../../../Tags/components/TagPickerField";
 
 const inputClass =
   "h-9 w-full rounded-xl border border-[#e1e7fb] bg-white px-3 text-sm font-semibold text-slate-900 outline-none transition placeholder:font-medium placeholder:text-slate-350 focus:border-[#4663ff] focus:ring-[3px] focus:ring-[#4663ff]/12 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400";
@@ -89,9 +91,18 @@ export default function AddExpense() {
     setInvoiceDiscountAmount,
     clearInvoiceDiscount,
     items,
+    setItems,
+
     supplierOptions,
     category,
     taxes,
+    tagIds,
+    setTagIds,
+
+    loading,
+    saving,
+    error,
+
     addItem,
     removeItem,
     updateItem,
@@ -102,17 +113,17 @@ export default function AddExpense() {
     updateItemTax,
     enableItemTax,
     disableItemTax,
-    submit,
+
     subtotal,
     itemDiscountSummary,
     itemTaxSummary,
     invoiceDiscount,
     invoiceTaxValue,
     netTotal,
-    loading,
-    saving,
-    error,
+
+    submit,
     reset,
+    refetch,
   } = useAddExpense({ supplierModalOpen });
   const { submitDraft, setDraft, draft, actionError } = useSuppliersList();
   const [deleteItemIndex, setDeleteItemIndex] = useState(null);
@@ -120,7 +131,7 @@ export default function AddExpense() {
   const { money } = usePrimaryCurrency();
 
   const [revealedItemDiscounts, setRevealedItemDiscounts] = useState(
-    () => new Set()
+    () => new Set(),
   );
   const [revealedItemNotes, setRevealedItemNotes] = useState(() => new Set());
   const [invoiceDiscountRevealed, setInvoiceDiscountRevealed] = useState(false);
@@ -277,6 +288,28 @@ export default function AddExpense() {
 
                   <div />
                 </div>
+              </div>
+            </section>
+            {/* Tags */}
+            <section className={panelClass}>
+              <AccentRule colorClass="bg-pink-500" />
+              <div className={panelBodyClass}>
+                <div className="mb-3 flex items-center gap-2.5">
+                  <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-pink-50 text-pink-600">
+                    <Tag size={15} />
+                  </span>
+                  <h3 className="text-[13px] font-black text-slate-950">
+                    {t("screens.tags.title")}
+                  </h3>
+                </div>
+
+                <TagPickerField
+                  scope="expense"
+                  entityType="expense"
+                  entityId={null}
+                  selectedIds={tagIds}
+                  onChange={setTagIds}
+                />
               </div>
             </section>
 
@@ -453,12 +486,12 @@ export default function AddExpense() {
                                     ? Number(e.target.value)
                                     : null;
                                   const selectedTax = taxes?.find(
-                                    (tx) => tx.id === newTaxId
+                                    (tx) => tx.id === newTaxId,
                                   );
                                   updateItemTax(
                                     index,
                                     newTaxId,
-                                    selectedTax?.rate || 0
+                                    selectedTax?.rate || 0,
                                   );
                                 }}
                               >
@@ -469,7 +502,7 @@ export default function AddExpense() {
                                   ?.filter(
                                     (tax) =>
                                       tax.category === "product" ||
-                                      tax.category === "both"
+                                      tax.category === "both",
                                   )
                                   .map((tax) => (
                                     <option key={tax.id} value={tax.id}>
@@ -529,7 +562,7 @@ export default function AddExpense() {
                                 updateItemDescription(index, e.target.value)
                               }
                               placeholder={t(
-                                "screens.invoices.notePlaceholder"
+                                "screens.invoices.notePlaceholder",
                               )}
                             />
                             <button
@@ -692,7 +725,7 @@ export default function AddExpense() {
                         value=""
                         onChange={(e) => {
                           const selected = taxes.find(
-                            (tax) => tax.id === Number(e.target.value)
+                            (tax) => tax.id === Number(e.target.value),
                           );
                           if (selected) addInvoiceTax(selected);
                         }}
@@ -700,7 +733,7 @@ export default function AddExpense() {
                         <option value="">
                           {t(
                             "screens.invoices.addAnotherTax",
-                            "Add another tax"
+                            "Add another tax",
                           )}
                         </option>
                         {taxes
@@ -709,8 +742,8 @@ export default function AddExpense() {
                               (tax.category === "invoice" ||
                                 tax.category === "both") &&
                               !(invoice.taxes || []).some(
-                                (applied) => applied.id === tax.id
-                              )
+                                (applied) => applied.id === tax.id,
+                              ),
                           )
                           .map((tax) => (
                             <option key={tax.id} value={tax.id}>

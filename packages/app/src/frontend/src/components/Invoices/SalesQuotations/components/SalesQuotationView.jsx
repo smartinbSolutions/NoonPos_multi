@@ -8,6 +8,7 @@ import GoTo from "../../../../Global/GoTo";
 import FormattedDate from "../../../../Global/FormattedDate";
 import HoverTooltip from "../../../../Global/HoverTooltip";
 import BackButton from "../../../../Global/BackButton";
+import TagList from "../../../Tags/components/TagList";
 
 const panelClass =
   "relative overflow-hidden rounded-2xl border border-[#e9edfb] bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]";
@@ -30,6 +31,7 @@ export default function SalesQuotationView() {
 
   const [quotation, setQuotation] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [tags, setTags] = useState([]);
   const { money } = usePrimaryCurrency();
 
   const [isPrinting, setIsPrinting] = useState(false);
@@ -55,7 +57,7 @@ export default function SalesQuotationView() {
       setIsSavingPdf(true);
       const res = await api.saveDocumentPdf(
         `/print-sales-quotation/${id}`,
-        `quotation-${id}.pdf`
+        `quotation-${id}.pdf`,
       );
       if (!res.success && res.error !== "CANCELED") {
         console.error(res.error);
@@ -77,6 +79,16 @@ export default function SalesQuotationView() {
 
         if (!cancelled) {
           setQuotation(data);
+        }
+
+        if (data && !cancelled) {
+          const tagsRes = await window.api.getEntityTags(
+            "sales_quotation",
+            Number(id),
+          );
+          if (tagsRes.success && !cancelled) {
+            setTags(tagsRes.data);
+          }
         }
       } catch (error) {
         console.error("Failed to load quotation:", error);
@@ -103,11 +115,11 @@ export default function SalesQuotationView() {
 
   const itemTaxTotal = items.reduce(
     (sum, item) => sum + Number(item.taxValue || 0),
-    0
+    0,
   );
   const itemDiscountTotal = items.reduce(
     (sum, item) => sum + Number(item.discount || 0),
-    0
+    0,
   );
   const quotationDiscount = Number(quotation?.discount || 0);
 
@@ -209,6 +221,12 @@ export default function SalesQuotationView() {
                   className="mt-0.5 shrink-0 text-amber-500"
                 />
                 {quotation.description}
+              </div>
+            )}
+            {tags.length > 0 && (
+              <div className="flex items-center gap-2 rounded-xl border border-[#e9edfb] bg-white px-3.5 py-2.5 print:hidden">
+                <Tag size={14} className="shrink-0 text-slate-400" />
+                <TagList tags={tags} limit={6} />
               </div>
             )}
 

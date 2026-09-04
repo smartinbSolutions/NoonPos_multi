@@ -27,6 +27,7 @@ import ReturnStatusBadge from "../../../../Global/ReturnStatusBadge";
 import HoverTooltip from "../../../../Global/HoverTooltip";
 import { ToastContainer } from "react-toastify";
 import DropdownMenu from "../../../../Global/DropdownMenu";
+import TagList from "../../../Tags/components/TagList";
 
 function BreakdownTooltip({ trigger, rows }) {
   const hasAnyValue = rows.some((r) => Number(r.value) > 0);
@@ -47,7 +48,7 @@ function BreakdownTooltip({ trigger, rows }) {
                 {row.display}
               </span>
             </div>
-          )
+          ),
       )}
     />
   );
@@ -132,6 +133,8 @@ const SalesList = () => {
     clearFilters,
     customers,
     taxes,
+    allTags,
+    tagsByInvoice,
   } = useSalesList();
 
   const navigate = useNavigate();
@@ -194,6 +197,15 @@ const SalesList = () => {
         label: `${tax.name} (${tax.rate}%)`,
       })),
     },
+    {
+      name: "tagIds",
+      type: "multiselect",
+      label: t("screens.tags.title"),
+      options: allTags.map((tag) => ({
+        value: tag.id,
+        label: tag.name,
+      })),
+    },
   ];
 
   const filtered = useMemo(() => {
@@ -237,7 +249,7 @@ const SalesList = () => {
       setSavingPdfId(invoiceId);
       const res = await api.saveDocumentPdf(
         `/print-sales/${invoiceId}`,
-        `invoice-${invoiceId}.pdf`
+        `invoice-${invoiceId}.pdf`,
       );
       if (!res.success && res.error !== "CANCELED") {
         setActionError(t("screens.invoices.pdfFailed", "Failed to save PDF."));
@@ -260,15 +272,15 @@ const SalesList = () => {
 
   const totalNet = salesInvoices.reduce(
     (sum, inv) => sum + Number(inv.net_total || 0),
-    0
+    0,
   );
   const totalTax = salesInvoices.reduce(
     (sum, inv) => sum + Number(inv.total_tax_value || inv.taxValue || 0),
-    0
+    0,
   );
 
   const unpaidCount = salesInvoices.filter(
-    (inv) => inv.status !== "paid"
+    (inv) => inv.status !== "paid",
   ).length;
 
   return (
@@ -338,6 +350,9 @@ const SalesList = () => {
                   <th className="px-4 py-3 text-center">{t("ui.net")}</th>
                   <th className="px-4 py-3 text-center">{t("ui.status")}</th>
                   <th className="px-4 py-3 text-center">
+                    {t("screens.tags.title")}
+                  </th>
+                  <th className="px-4 py-3 text-center">
                     {t("common.actions")}
                   </th>
                 </tr>
@@ -361,13 +376,14 @@ const SalesList = () => {
                     const itemTax = Number(inv.item_tax_total || 0);
                     const invoiceTax = Number(inv.taxValue || 0);
                     const totalTaxValue = Number(
-                      inv.total_tax_value ?? itemTax + invoiceTax
+                      inv.total_tax_value ?? itemTax + invoiceTax,
                     );
 
                     const itemDiscount = Number(inv.item_discount_total || 0);
                     const invoiceDiscount = Number(inv.discount || 0);
                     const totalDiscountValue = Number(
-                      inv.total_discount_value ?? itemDiscount + invoiceDiscount
+                      inv.total_discount_value ??
+                        itemDiscount + invoiceDiscount,
                     );
 
                     return (
@@ -482,7 +498,12 @@ const SalesList = () => {
                             <ReturnStatusBadge status={inv.return_status} />
                           </div>
                         </td>
-
+                        <td className="px-4 py-3 text-center">
+                          <TagList
+                            tags={tagsByInvoice[inv.id] || []}
+                            limit={2}
+                          />
+                        </td>
                         <td className="px-4 py-3 text-center">
                           <DropdownMenu
                             trigger={

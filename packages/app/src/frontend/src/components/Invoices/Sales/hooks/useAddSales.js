@@ -82,10 +82,11 @@ export default function useAddSales({ customerModalOpen, isFormOpen }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+  const [tagIds, setTagIds] = useState([]);
 
   const setInvoice = (updater) => {
     setInvoiceState((prev) =>
-      typeof updater === "function" ? updater(prev) : { ...prev, ...updater }
+      typeof updater === "function" ? updater(prev) : { ...prev, ...updater },
     );
   };
 
@@ -172,7 +173,7 @@ export default function useAddSales({ customerModalOpen, isFormOpen }) {
       const copy = [...prev];
       const item = copy[index];
       const selectedUnit = item.available_units?.find(
-        (u) => u.id === Number(unitId)
+        (u) => u.id === Number(unitId),
       );
 
       if (!selectedUnit) return prev;
@@ -225,7 +226,7 @@ export default function useAddSales({ customerModalOpen, isFormOpen }) {
       available_units,
       unit_id,
       unit_name,
-    }
+    },
   ) => {
     setItems((prev) => {
       const copy = [...prev];
@@ -396,7 +397,7 @@ export default function useAddSales({ customerModalOpen, isFormOpen }) {
 
           setItems((prev) => {
             const existingIndex = prev.findIndex(
-              (i) => Number(i.product_id) === Number(product.id)
+              (i) => Number(i.product_id) === Number(product.id),
             );
 
             if (existingIndex !== -1) {
@@ -618,8 +619,13 @@ export default function useAddSales({ customerModalOpen, isFormOpen }) {
           throw new Error(res?.error || t("errors.createInvoiceFailed"));
         }
 
+        if (res.invoiceId && tagIds.length > 0) {
+          await api.setEntityTags("sales_invoice", res.invoiceId, tagIds);
+        }
+
         setInvoice(emptyInvoice);
         setItems([emptyItem]);
+        setTagIds([]);
 
         navigate("/sales");
         return res;
@@ -641,12 +647,14 @@ export default function useAddSales({ customerModalOpen, isFormOpen }) {
       navigate,
       t,
       user,
-    ]
+      tagIds,
+    ],
   );
 
   const reset = () => {
     setInvoice(emptyInvoice);
     setItems([emptyItem]);
+    setTagIds([]);
     setError("");
   };
 
@@ -695,5 +703,7 @@ export default function useAddSales({ customerModalOpen, isFormOpen }) {
     api,
     setProducts,
     refetch,
+    tagIds,
+    setTagIds,
   };
 }

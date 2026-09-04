@@ -16,6 +16,7 @@ export default function useSalesReturn() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [tagIds, setTagIds] = useState([]);
 
   const load = useCallback(async () => {
     try {
@@ -46,7 +47,7 @@ export default function useSalesReturn() {
                 : Number(item.available_quantity || 0),
             returnUnitQuantity: 0,
           };
-        })
+        }),
       );
       setError("");
     } catch (err) {
@@ -86,7 +87,7 @@ export default function useSalesReturn() {
       } else if (
         updated.every(
           (i) =>
-            Number(i.returnUnitQuantity) <= Number(i.available_unit_quantity)
+            Number(i.returnUnitQuantity) <= Number(i.available_unit_quantity),
         )
       ) {
         setError("");
@@ -101,13 +102,13 @@ export default function useSalesReturn() {
       prev.map((item) => ({
         ...item,
         returnUnitQuantity: Number(item.available_unit_quantity || 0),
-      }))
+      })),
     );
   };
 
   const clearAll = () => {
     setItems((prev) =>
-      prev.map((item) => ({ ...item, returnUnitQuantity: 0 }))
+      prev.map((item) => ({ ...item, returnUnitQuantity: 0 })),
     );
   };
 
@@ -175,7 +176,7 @@ export default function useSalesReturn() {
 
   const invoiceDiscount = useMemo(() => {
     return Number(
-      ((afterItemDiscounts * invoiceDiscountRate) / 100).toFixed(2)
+      ((afterItemDiscounts * invoiceDiscountRate) / 100).toFixed(2),
     );
   }, [afterItemDiscounts, invoiceDiscountRate]);
 
@@ -190,7 +191,9 @@ export default function useSalesReturn() {
   const netTotal = useMemo(() => {
     return Math.max(
       0,
-      Number((afterInvoiceDiscount + itemTaxTotal + invoiceTaxValue).toFixed(2))
+      Number(
+        (afterInvoiceDiscount + itemTaxTotal + invoiceTaxValue).toFixed(2),
+      ),
     );
   }, [afterInvoiceDiscount, itemTaxTotal, invoiceTaxValue]);
 
@@ -252,6 +255,10 @@ export default function useSalesReturn() {
         return { success: false, error: result?.error };
       }
 
+      if (result.returnId && tagIds.length > 0) {
+        await api.setEntityTags("sales_return", result.returnId, tagIds);
+      }
+
       navigate("/sales");
       return { success: true };
     } catch (err) {
@@ -283,6 +290,8 @@ export default function useSalesReturn() {
     loading,
     saving,
     error,
+    tagIds,
+    setTagIds,
     submit,
   };
 }

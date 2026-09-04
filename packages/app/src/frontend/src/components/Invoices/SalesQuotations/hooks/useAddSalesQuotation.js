@@ -79,6 +79,7 @@ export default function useAddSalesQuotation({ customerModalOpen } = {}) {
   const [items, setItems] = useState([emptyItem]);
   const [products, setProducts] = useState([]);
   const [taxes, setTaxes] = useState([]);
+  const [tagIds, setTagIds] = useState([]);
   const [customers, setCustomers] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -86,7 +87,7 @@ export default function useAddSalesQuotation({ customerModalOpen } = {}) {
 
   const setQuotation = (updater) => {
     setQuotationState((prev) =>
-      typeof updater === "function" ? updater(prev) : { ...prev, ...updater }
+      typeof updater === "function" ? updater(prev) : { ...prev, ...updater },
     );
   };
 
@@ -187,7 +188,7 @@ export default function useAddSalesQuotation({ customerModalOpen } = {}) {
       const copy = [...prev];
       const item = copy[index];
       const selectedUnit = item.available_units?.find(
-        (u) => u.id === Number(unitId)
+        (u) => u.id === Number(unitId),
       );
 
       if (!selectedUnit) return prev;
@@ -307,22 +308,22 @@ export default function useAddSalesQuotation({ customerModalOpen } = {}) {
 
   const subtotal = useMemo(
     () => items.reduce((sum, item) => sum + (item.total || 0), 0),
-    [items]
+    [items],
   );
 
   const itemDiscountTotal = useMemo(
     () => items.reduce((sum, item) => sum + (item.discount || 0), 0),
-    [items]
+    [items],
   );
 
   const afterItemDiscounts = useMemo(
     () => subtotal - itemDiscountTotal,
-    [subtotal, itemDiscountTotal]
+    [subtotal, itemDiscountTotal],
   );
 
   const itemTaxTotal = useMemo(
     () => items.reduce((sum, item) => sum + (item.taxValue || 0), 0),
-    [items]
+    [items],
   );
 
   const itemTaxSummary = useMemo(() => {
@@ -356,7 +357,7 @@ export default function useAddSalesQuotation({ customerModalOpen } = {}) {
 
   const afterQuotationDiscount = useMemo(
     () => afterItemDiscounts - quotationDiscount,
-    [afterItemDiscounts, quotationDiscount]
+    [afterItemDiscounts, quotationDiscount],
   );
 
   const setQuotationDiscountRate = (rate) => {
@@ -414,7 +415,7 @@ export default function useAddSalesQuotation({ customerModalOpen } = {}) {
   const netTotal = useMemo(
     () =>
       Math.max(0, afterQuotationDiscount + itemTaxTotal + quotationTaxValue),
-    [afterQuotationDiscount, itemTaxTotal, quotationTaxValue]
+    [afterQuotationDiscount, itemTaxTotal, quotationTaxValue],
   );
 
   const submit = useCallback(async () => {
@@ -424,7 +425,7 @@ export default function useAddSalesQuotation({ customerModalOpen } = {}) {
     }
 
     const usableItems = items.filter(
-      (i) => (i.product_id || i.product_name?.trim()) && i.entered_quantity > 0
+      (i) => (i.product_id || i.product_name?.trim()) && i.entered_quantity > 0,
     );
 
     if (!usableItems.length) {
@@ -457,9 +458,13 @@ export default function useAddSalesQuotation({ customerModalOpen } = {}) {
         throw new Error(res?.error || t("errors.createQuotationFailed"));
       }
 
+      if (res.quotationId && tagIds.length > 0) {
+        await api.setEntityTags("sales_quotation", res.quotationId, tagIds);
+      }
+
       setQuotation(emptyQuotation);
       setItems([emptyItem]);
-
+      setTagIds([]);
       navigate("/sales-quotations");
       return res;
     } catch (err) {
@@ -479,6 +484,7 @@ export default function useAddSalesQuotation({ customerModalOpen } = {}) {
     navigate,
     t,
     user,
+    tagIds,
   ]);
 
   return {
@@ -494,6 +500,8 @@ export default function useAddSalesQuotation({ customerModalOpen } = {}) {
     products,
     customers,
     taxes,
+    tagIds,
+    setTagIds,
     addItem,
     removeItem,
     updateItem,

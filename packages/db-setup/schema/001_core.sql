@@ -88,3 +88,38 @@ CREATE TABLE IF NOT EXISTS company_default_pos_taxes (
   created_at TIMESTAMPTZ DEFAULT now(),
   FOREIGN KEY (tax_id) REFERENCES taxes(id)
 );
+
+-- Tags and taggables tables for tagging products, customers, suppliers, invoices, etc.
+
+CREATE TABLE IF NOT EXISTS tags (
+  id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  name TEXT NOT NULL,
+  latin_name TEXT,
+  color TEXT,
+  scope TEXT CHECK (scope IN (
+    'product','customer','supplier','partner',
+    'sales_invoice','sales_return','sales_quotation',
+    'purchase_invoice','purchase_return',
+    'expense','payment'
+  ) OR scope IS NULL),
+  created_at TIMESTAMPTZ DEFAULT now(),
+  UNIQUE(name, scope)
+);
+
+CREATE TABLE IF NOT EXISTS taggables (
+  id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  tag_id INTEGER NOT NULL,
+  entity_type TEXT NOT NULL CHECK (entity_type IN (
+    'product','customer','supplier','partner',
+    'sales_invoice','sales_return','sales_quotation',
+    'purchase_invoice','purchase_return',
+    'expense','payment'
+  )),
+  entity_id INTEGER NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  FOREIGN KEY (tag_id) REFERENCES tags(id) ON DELETE CASCADE,
+  UNIQUE(tag_id, entity_type, entity_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_taggables_tag ON taggables(tag_id);
+CREATE INDEX IF NOT EXISTS idx_taggables_entity ON taggables(entity_type, entity_id);
