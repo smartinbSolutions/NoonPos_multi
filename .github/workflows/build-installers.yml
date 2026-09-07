@@ -1,0 +1,61 @@
+name: Build Installers
+on:
+  workflow_dispatch: {}
+  push:
+    branches: [main]
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: windows-2022
+            artifact_name: windows-installer
+            artifact_path: packages/app/out/make/squirrel.windows/x64/*
+          - os: macos-14
+            artifact_name: macos-installer
+            artifact_path: packages/app/out/make/*.dmg
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: npm install --legacy-peer-deps
+
+      - name: Fetch Postgres binaries
+        shell: bash
+        run: |
+          mkdir -p packages/db-setup/bin
+          if [ "${{ runner.os }}" == "Windows" ]; then
+            curl -L -o pg.zip "https://github.com/theseus-rs/postgresql-binaries/releases/download/18.4.0/postgresql-18.4.0-x86_64-pc-windows-msvc.zip"
+            unzip pg.zip -d packages/db-setup/bin/win
+          else
+            if [ "${{ runner.arch }}" == "ARM64" ]; then
+              curl -L -o pg.tar.gz "https://github.com/theseus-rs/postgresql-binaries/releases/download/18.4.0/postgresql-18.4.0-aarch64-apple-darwin.tar.gz"
+              mkdir -p packages/db-setup/bin/mac-arm64
+              tar -xzf pg.tar.gz -C packages/db-setup/bin/mac-arm64
+            else
+              curl -L -o pg.tar.gz "https://github.com/theseus-rs/postgresql-binaries/releases/download/18.4.0/postgresql-18.4.0-x86_64-apple-darwin.tar.gz"
+              mkdir -p packages/db-setup/bin/mac-x64
+              tar -xzf pg.tar.gz -C packages/db-setup/bin/mac-x64
+            fi
+          fi
+
+      - name: Rebuild native modules for Electron
+        working-directory: packages/app
+        run: npx electron-rebuild -f -w better-sqlite3
+
+      - name: Make installer
+        working-directory: packages/app
+        run: npm run make
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: ${{ matrix.artifact_path }}
