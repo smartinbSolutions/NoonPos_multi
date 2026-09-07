@@ -8,48 +8,40 @@ import {
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import "react-toastify/dist/ReactToastify.css";
-
 import "@fontsource/plus-jakarta-sans/400.css";
 import "@fontsource/plus-jakarta-sans/500.css";
 import "@fontsource/plus-jakarta-sans/600.css";
 import "@fontsource/plus-jakarta-sans/700.css";
 import "@fontsource/plus-jakarta-sans/800.css";
-
 import "@fontsource/almarai/300.css";
 import "@fontsource/almarai/400.css";
 import "@fontsource/almarai/700.css";
 import "@fontsource/almarai/800.css";
-
 import Layout from "./Layout";
 import { AuthProvider, useAuth } from "./Global/AuthContext";
 import LoginScreen from "./components/Auth/component/LoginScreen";
 import ActivationPage from "./renderer/ActivationPage";
 import SetupPage from "./components/SetupPage/components/SetupPage";
-
 import Dashboard from "./pages/DashboardPage";
 import POSSystem from "./components/PosPoint/components/POSSystem";
-
 // Sales
 import SalesList from "./components/Invoices/Sales/components/SalesList";
 import AddSales from "./components/Invoices/Sales/components/AddSales";
 import UpdateSales from "./components/Invoices/Sales/components/UpdateSales";
 import SalesInvoiceView from "./components/Invoices/Sales/components/SalesInvoiceView";
 import { CustomerList } from "./components/Customer/components/CustomerList";
-
 // Purchase
 import PurchaseList from "./components/Invoices/Purchase/components/PurchaseList";
 import AddPurchase from "./components/Invoices/Purchase/components/AddPurchase";
 import UpdatePurchase from "./components/Invoices/Purchase/components/UpdatePurchase";
 import PurchaseInvoiceView from "./components/Invoices/Purchase/components/PurchaseInvoiceView";
 import { SuppliersList } from "./components/Supplier/components/SuppliersList";
-
 // Expenses
 import ExpenseList from "./components/Invoices/expense/components/ExpenseList";
 import AddExpense from "./components/Invoices/expense/components/AddExpense";
 import UpdateExpense from "./components/Invoices/expense/components/UpdateExpense";
 import ExpenseView from "./components/Invoices/expense/components/ExpenseView";
 import ExpenseCategoryList from "./components/ExpenseCategory/components/ExpenseCategoryList";
-
 // Cash / Funds
 import FundList from "./components/Cash/Fund/components/FundList";
 import FundMovementsPage from "./components/Cash/Fund/components/FundMovementsPage";
@@ -57,14 +49,11 @@ import FundTransferList from "./components/Cash/Fund/components/FundTransferList
 import PaymentList from "./components/Cash/Payment/components/paymentList";
 import PartyLedgerPage from "./components/Payment/components/PartyLedgerPage";
 import CurrencyList from "./components/Cash/Currency/components/CurrencyList";
-
 // Products
 import ProductList from "./components/Products/components/productList";
 import ImportSummary from "./components/Products/components/ImportSummary";
-
 // Partners
 import PartnersList from "./components/Partners/components/PartnersList";
-
 // Settings
 import UnitList from "./components/Unit/components/UnitList";
 import TaxList from "./components/Tax/components/TaxList";
@@ -98,6 +87,7 @@ import SalesReport from "./components/Reports/components/SalesReport";
 import PrintProfitLossReport from "./components/Reports/components/PrintProfitLossReport";
 import PrintSalesByProduct from "./components/Reports/components/PrintSalesByProduct";
 import PrintSalesByCustomer from "./components/Reports/components/PrintSalesByCustomer";
+import DbSetupPage from "./components/SetupPage/components/DbSetupPage";
 import TagsScreen from "./components/Tags/components/TagsScreen";
 import BomList from "./components/Manufactoring/components/BomList";
 import BomFormPage from "./components/Manufactoring/components/BomFormPage";
@@ -113,11 +103,9 @@ import { LicenseProvider } from "./Global/LicenseContext";
 function PosGate({ children }) {
   const { user } = useAuth();
   const location = useLocation();
-
   if (user?.role === "pos" && location.pathname !== "/pos") {
     return <Navigate to="/pos" replace />;
   }
-
   return children;
 }
 
@@ -138,6 +126,7 @@ export default function App() {
   const { t } = useTranslation();
   const [licenseStatus, setLicenseStatus] = useState(null);
   const [isSetup, setIsSetup] = useState(null);
+  const [dbStatus, setDbStatus] = useState(null);
 
   useEffect(() => {
     const checkLicense = async () => {
@@ -149,13 +138,39 @@ export default function App() {
         setLicenseStatus({ valid: false, reason: "missing_license" });
       }
     };
-
     checkLicense();
   }, []);
 
   useEffect(() => {
     if (!licenseStatus?.valid) return;
+    const checkDb = async () => {
+      try {
+        const hasConfig = await window.db?.hasConfig();
+        if (!hasConfig) {
+          setDbStatus({ hasConfig: false });
+          return;
+        }
+        // A config file existing isn't enough — actually verify it still
+        // connects. If the host's IP changed, or it's offline, this
+        // catches that and routes back to DbSetupPage automatically,
+        // rather than leaving the user stuck with a broken app and no
+        // way to fix it themselves.
+        const result = await window.db?.checkSavedConnection();
+        setDbStatus({
+          hasConfig: !!result?.success,
+          previouslyConnected: true,
+          lastError: result?.success ? null : result?.error,
+        });
+      } catch (err) {
+        console.error(err);
+        setDbStatus({ hasConfig: false });
+      }
+    };
+    checkDb();
+  }, [licenseStatus]);
 
+  useEffect(() => {
+    if (!licenseStatus?.valid || !dbStatus?.hasConfig) return;
     const check = async () => {
       try {
         const res = await window.api.getCompanySetting();
@@ -165,9 +180,8 @@ export default function App() {
         setIsSetup(false);
       }
     };
-
     check();
-  }, [licenseStatus]);
+  }, [licenseStatus, dbStatus]);
 
   if (licenseStatus === null) return <div>{t("common.loading")}</div>;
 
@@ -176,6 +190,17 @@ export default function App() {
       <ActivationPage
         reason={licenseStatus.reason}
         onActivated={(status) => setLicenseStatus(status)}
+      />
+    );
+  }
+
+  if (dbStatus === null) return <div>{t("common.loading")}</div>;
+
+  if (!dbStatus.hasConfig) {
+    return (
+      <DbSetupPage
+        previouslyConnected={dbStatus.previouslyConnected}
+        onConnected={() => setDbStatus({ hasConfig: true })}
       />
     );
   }
@@ -333,6 +358,7 @@ export default function App() {
 
                 {/* ================= PARTNERS ================= */}
                 <Route path="partners" element={<PartnersList />} />
+
                 {/* ================= REPORTS ================= */}
                 <Route
                   path="/reports/profit-loss"
@@ -358,6 +384,7 @@ export default function App() {
                   }
                 />
               </Route>
+
               <Route path="/print-sales/:id" element={<PrintSalesInvoice />} />
               <Route
                 path="/print-sales-quotation/:id"
@@ -389,6 +416,7 @@ export default function App() {
                 path="/print-sales-by-customer"
                 element={<PrintSalesByCustomer />}
               />
+
               {/* fallback */}
               <Route path="*" element={<Navigate to="/" />} />
             </>

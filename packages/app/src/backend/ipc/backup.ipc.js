@@ -4,25 +4,22 @@ import os from "os";
 import path from "path";
 import { query } from "../dbConnect.js";
 import { verifyPin } from "../utils/authCrypto";
-import {
-  loadDbConfig,
-  isDbHostMachine,
-} from "../main/db/dbConnectionConfig.js";
+import { loadDbConfig } from "../../main/db/dbConnectionConfig.js";
 import {
   getBackupSettings,
   updateBackupSettings,
   writeRestoreAudit,
   runBackupNow,
-} from "../services/backup/backupMeta.service";
+} from "../../main/backup/backupMeta.service.js";
 import {
   pgRestoreBackup,
   terminateOtherConnections,
-} from "../services/backup/pgBackup.service";
+} from "../../main/backup/pgBackup.service";
 import {
   downloadCloudBackup,
   listCloudBackups,
   uploadCloudBackup,
-} from "../services/backup/cloudBackup.service";
+} from "../../main/backup/cloudBackup.service";
 
 /* ============================================================
    INTERNAL HELPERS
@@ -89,14 +86,12 @@ export default function registerBackupIPC() {
     try {
       const settingsResult = getBackupSettings();
       const folder = settingsResult.data?.default_folder || null;
-
       if (!folder) {
         return { success: false, error: "NO_BACKUP_FOLDER_CONFIGURED" };
       }
       if (!fs.existsSync(folder)) {
         return { success: false, error: "BACKUP_FOLDER_NOT_FOUND" };
       }
-
       const files = fs
         .readdirSync(folder)
         .filter((name) => name.endsWith(".dump"))
@@ -111,7 +106,6 @@ export default function registerBackupIPC() {
           };
         })
         .sort((a, b) => new Date(b.mtime) - new Date(a.mtime));
-
       return { success: true, data: files };
     } catch (err) {
       return { success: false, error: err.message || String(err) };
@@ -120,22 +114,20 @@ export default function registerBackupIPC() {
 
   // CREATE A BACKUP NOW — thin wrapper; the actual pg_dump logic lives in
   // runBackupNow() so the scheduler can call the exact same path without
-  // going through an IPC round-trip to itself. Host-only: pg_dump only
-  // exists on the machine that ran NoonPos-DBSetup.exe.
+  // going through an IPC round-trip to itself. Available from any
+  // terminal — pg_dump connects to the host over the network.
   ipcMain.handle("backup-create", async (event, { targetFolder } = {}) => {
-    if (!isDbHostMachine()) {
-      return { success: false, error: "BACKUP_ONLY_AVAILABLE_ON_HOST" };
-    }
     return runBackupNow({ targetFolder });
   });
 
   // RESTORE FROM A BACKUP FILE — strict gate: active admin's own PIN AND
   // the recovery key, both required (mirrors auth:recover-admin-pin's
   // verification calls, but neither alone is sufficient here since restore
-  // is more destructive than a PIN reset). Host-only, same reason as
-  // backup-create — plus restore rewrites the shared database every
-  // terminal on the network depends on, so it should only ever be
-  // triggered from the one machine that actually owns the data directory.
+  // is more destructive than a PIN reset). Available from any terminal —
+  // pg_restore connects to the host over the network the same way any
+  // other query does; the admin PIN + recovery key check below is the
+  // real authorization boundary here, not which physical machine this
+  // runs from.
   ipcMain.handle("backup-restore", async (event, data) => {
     const device = os.hostname();
     const backupFileName = path.basename(data.backupFilePath || "");
@@ -151,10 +143,6 @@ export default function registerBackupIPC() {
       });
       return { success: false, error };
     };
-
-    if (!isDbHostMachine()) {
-      return fail("RESTORE_ONLY_AVAILABLE_ON_HOST");
-    }
 
     try {
       if (!data.backupFilePath) return await fail("BACKUP_FILE_REQUIRED");
@@ -203,10 +191,10 @@ export default function registerBackupIPC() {
         status: "success",
       });
 
-      // The host's own app process still holds pooled connections whose
-      // underlying sessions were just terminated/invalidated by the
-      // restore — relaunch so every module reconnects fresh. Other
-      // terminals on the network also need to reconnect, but that's a
+      // This terminal's own app process still holds pooled connections
+      // whose underlying sessions were just terminated/invalidated by the
+      // restore — relaunch so every module reconnects fresh. Every other
+      // terminal on the network also needs to reconnect, but that's a
       // separate notification concern outside this handler's scope.
       app.relaunch();
       app.exit(0);
@@ -218,9 +206,9 @@ export default function registerBackupIPC() {
   });
 
   // UPLOAD A FRESH SNAPSHOT TO CLOUD BACKUP — entitlement, device
-  // activation, host-only status, and the one-per-day cap are all
-  // enforced inside uploadCloudBackup() itself; this handler just calls
-  // the service and passes the result through.
+  // activation, and the one-per-day cap are all enforced inside
+  // uploadCloudBackup() itself; this handler just calls the service and
+  // passes the result through.
   ipcMain.handle("backup-cloud-upload", () => {
     return uploadCloudBackup();
   });

@@ -13,7 +13,7 @@ function getPool() {
   if (!config) {
     throw new Error(
       "No database connection config found — this should be unreachable, " +
-        "since IPC handlers only register after DbSetupPage has saved a config."
+        "since IPC handlers only register after DbSetupPage has saved a config.",
     );
   }
 
@@ -23,6 +23,8 @@ function getPool() {
     database: config.database,
     user: config.user,
     password: config.password,
+    connectionTimeoutMillis: 5000, // fail fast instead of hanging on an unreachable host
+    idleTimeoutMillis: 30000,
   });
 
   return pool;

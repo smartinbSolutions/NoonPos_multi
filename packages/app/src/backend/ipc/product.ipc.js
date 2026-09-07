@@ -335,7 +335,7 @@ export default function registerProductIPC() {
         WHERE product_units.product_id = products.id AND product_units.is_base = false
       ) AS "unitCount",
       (
-        SELECT json_agg(
+        SELECT jsonb_agg(
           json_build_object(
             'id', pu.id,
             'unit_name', pu.unit_name,

@@ -24,12 +24,12 @@ export async function setupSchema(paths, schemaDir) {
   const adminConfig = loadAdminConfig(paths);
   if (!adminConfig) {
     throw new Error(
-      "[db-setup] No admin config found — initDataDirectory() must run first."
+      "[db-setup] No admin config found — initDataDirectory() must run first.",
     );
   }
   if (!adminConfig.appUser) {
     throw new Error(
-      "[db-setup] No app_user recorded in admin config — createDatabase() must run first."
+      "[db-setup] No app_user recorded in admin config — createDatabase() must run first.",
     );
   }
 
@@ -47,8 +47,8 @@ export async function setupSchema(paths, schemaDir) {
     const alreadyApplied = await getAlreadyAppliedFilenames(client);
     const allFiles = fs
       .readdirSync(schemaDir)
-      .filter((name) => name.endsWith(".sql"))
-      .sort(); // filenames are numerically prefixed (001_, 002_...), sort = correct order
+      .filter((name) => name.endsWith(".sql"));
+    filter((name) => !name.startsWith(".")).sort(); // filenames are numerically prefixed (001_, 002_...), sort = correct order
 
     const pending = allFiles.filter((name) => !alreadyApplied.has(name));
 
@@ -123,17 +123,17 @@ async function grantAppUserPrivileges(client, appUser) {
   // we used for database/role names elsewhere.
   await client.query(`GRANT USAGE ON SCHEMA public TO ${appUser}`);
   await client.query(
-    `GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO ${appUser}`
+    `GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO ${appUser}`,
   );
   await client.query(
-    `GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO ${appUser}`
+    `GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO ${appUser}`,
   );
   // Cover tables created by FUTURE migrations too, without needing to
   // re-grant manually after every schema change.
   await client.query(
-    `ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL PRIVILEGES ON TABLES TO ${appUser}`
+    `ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL PRIVILEGES ON TABLES TO ${appUser}`,
   );
   await client.query(
-    `ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL PRIVILEGES ON SEQUENCES TO ${appUser}`
+    `ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL PRIVILEGES ON SEQUENCES TO ${appUser}`,
   );
 }

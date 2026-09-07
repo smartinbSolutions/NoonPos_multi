@@ -2,8 +2,9 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import path from "node:path";
-import { loadDbConfig } from "../../db/dbConnectionConfig.js";
-import { getPgDumpPath, getPgRestorePath } from "../../db/pgBinPaths.js";
+
+import { getPgDumpPath, getPgRestorePath } from "../db/pgBinPaths.js";
+import { loadDbConfig } from "../db/dbConnectionConfig.js";
 
 const execFileAsync = promisify(execFile);
 

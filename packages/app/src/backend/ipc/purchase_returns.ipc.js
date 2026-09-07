@@ -454,7 +454,7 @@ export default function registerPurchaseReturnIPC() {
     LEFT JOIN (
       SELECT
         return_id,
-        json_agg(
+        jsonb_agg(
           json_build_object('tax_id', tax_id, 'name', tax_name, 'rate', tax_rate, 'value', tax_value)
         ) AS taxes_json
       FROM purchase_return_taxes

@@ -1573,6 +1573,31 @@
     "updated": "{{field}} başarıyla güncellendi",
     "deleted": "{{field}} başarıyla silindi"
   },
+  "dbSetup": {
+    "brandTitle": "Veritabanınıza Bağlanın",
+    "brandSubtitle": "Ağınızdaki veritabanı sunucusunun bağlantı bilgilerini girin.",
+    "brandHint": "Bu bilgileri noonpos-connection.txt dosyasında bulabilirsiniz",
+    "enterDetails": "Veritabanı bağlantı bilgilerinizi girin",
+    "hostPlaceholder": "Sunucu / IP adresi",
+    "portPlaceholder": "Port",
+    "databasePlaceholder": "Veritabanı adı",
+    "userPlaceholder": "Kullanıcı adı",
+    "passwordPlaceholder": "Şifre",
+    "testConnection": "Bağlantıyı test et",
+    "testing": "Bağlantı test ediliyor...",
+    "testSuccess": "Bağlantı başarılı",
+    "connectAndContinue": "Bağlan ve devam et",
+    "saving": "Kaydediliyor...",
+    "desktopOnly": "Bu özellik yalnızca masaüstü uygulamasında kullanılabilir.",
+    "errors": {
+      "connectionRefused": "Veritabanı bağlantıyı reddetti. Sunucu makinedeki Postgres servisinin çalıştığından emin olun.",
+      "hostUnreachable": "Bu sunucuya ulaşılamıyor. IP adresini kontrol edin ve her iki cihazın da aynı ağda olduğundan emin olun.",
+      "timeout": "Bağlantı zaman aşımına uğradı. Sunucu çevrimdışı veya erişilemez olabilir.",
+      "authFailed": "Kullanıcı adı veya şifre hatalı.",
+      "databaseNotFound": "Bu veritabanı adı sunucuda bulunamadı.",
+      "connectionFailed": "Veritabanına bağlanılamadı. Lütfen bilgilerinizi kontrol edip tekrar deneyin."
+    }
+  },
 
   "DOCS": {
     "CODE": "Kod",

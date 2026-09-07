@@ -7,7 +7,8 @@ const {
 module.exports = {
   packagerConfig: {
     asar: true,
-    icon: "build/icons/icon", // Forge appends .ico (win) / .icns (mac) automatically
+    icon: "build/icons/icon",
+    extraResource: ["../db-setup/bin"],
     ignore: (file) => {
       if (!file) return false;
 

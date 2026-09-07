@@ -1,10 +1,9 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
-import verifyLicenseFile from "../../../main/license/verifyLicenseFile";
-import getDeviceHash from "../../../main/license/getDeviceHash";
+import verifyLicenseFile from "../../main/license/verifyLicenseFile.js";
+import getDeviceHash from "../../main/license/getDeviceHash";
 import { pgDumpBackup } from "./pgBackup.service.js";
-import { isDbHostMachine } from "../../db/dbConnectionConfig.js";
 
 const UPLOAD_URL = "https://panel-server.smartinb.com/api/backups/upload";
 const LIST_URL = "https://panel-server.smartinb.com/api/backups/list";
@@ -15,15 +14,12 @@ const DOWNLOAD_URL_BASE =
  * Creates a fresh snapshot of the main database and uploads it to the
  * license server's cloud backup endpoint. Independent of local backup —
  * always makes its own pg_dump, per the deliberate choice to keep the two
- * features decoupled rather than sharing a file. Host-only, same
- * constraint as local backup: pg_dump only exists on the machine that ran
- * NoonPos-DBSetup.exe.
+ * features decoupled rather than sharing a file. Available from any
+ * terminal — pg_dump connects to the host over the network the same way
+ * every other query already does, and doesn't need to run on the host
+ * machine itself.
  */
 export async function uploadCloudBackup() {
-  if (!isDbHostMachine()) {
-    return { success: false, error: "CLOUD_BACKUP_ONLY_AVAILABLE_ON_HOST" };
-  }
-
   const status = await verifyLicenseFile();
 
   if (!status.valid) {

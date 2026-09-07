@@ -358,7 +358,7 @@ export async function getSalesByProduct(
     JOIN sales_invoices si ON si.id = sii.invoice_id
     LEFT JOIN products p ON p.id = sii.product_id
     WHERE 1=1 ${invoiceDate.clause}
-    GROUP BY sii.product_id, p.name
+    GROUP BY sii.product_id, p.name, sii.product_name
     ORDER BY revenue DESC
     LIMIT $${limitIndex}
     `,

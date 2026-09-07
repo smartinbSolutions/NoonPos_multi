@@ -18,7 +18,7 @@ import { ToastContainer } from "react-toastify";
 import PrinterSettingsModal from "./PrinterSettingsModal";
 import BackupSettingsModal from "./BackupSettingsModal";
 import PrinterOverviewModal from "./PrinterOverviewModal";
-import useAuth from "../../Auth/";
+import { useAuth } from "../../../Global/AuthContext";
 
 function Toggle({ checked, onChange }) {
   return (

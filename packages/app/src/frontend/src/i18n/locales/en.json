@@ -1566,6 +1566,31 @@
     "backup_file_missing": "This backup's file is missing on the server.",
     "missing_fields": "Required information is missing."
   },
+  "dbSetup": {
+    "brandTitle": "Connect to Your Database",
+    "brandSubtitle": "Enter the connection details for the database host on your network.",
+    "brandHint": "Find these details in noonpos-connection.txt",
+    "enterDetails": "Enter your database connection details",
+    "hostPlaceholder": "Host / IP address",
+    "portPlaceholder": "Port",
+    "databasePlaceholder": "Database name",
+    "userPlaceholder": "Username",
+    "passwordPlaceholder": "Password",
+    "testConnection": "Test connection",
+    "testing": "Testing connection...",
+    "testSuccess": "Connection successful",
+    "connectAndContinue": "Connect and continue",
+    "saving": "Saving...",
+    "desktopOnly": "This feature is only available in the desktop app.",
+    "errors": {
+      "connectionRefused": "The database refused the connection. Make sure the host machine's Postgres service is running.",
+      "hostUnreachable": "Can't reach that host. Check the IP address and make sure both machines are on the same network.",
+      "timeout": "Connection timed out. The host may be offline or unreachable.",
+      "authFailed": "Incorrect username or password.",
+      "databaseNotFound": "That database name doesn't exist on the host.",
+      "connectionFailed": "Couldn't connect to the database. Please check your details and try again."
+    }
+  },
   "success": {
     "created": "{{field}} created successfully",
     "updated": "{{field}} updated successfully",
