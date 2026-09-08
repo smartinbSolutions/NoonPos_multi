@@ -19,20 +19,36 @@ module.exports = {
         file.startsWith("/node_modules")
       );
     },
+    afterCopy: [
+      (buildPath, electronVersion, platform, arch, callback) => {
+        // npm workspace hoisting puts these native modules only in the
+        // repo root's node_modules, invisible to Forge's packager (which
+        // only ever looks inside packages/app/node_modules). Copy them
+        // in manually so the packaged app actually has the real .node
+        // binaries it needs at runtime.
+        const fs = require("fs");
+        const path = require("path");
+
+        const workspaceRoot = path.join(__dirname, "..", "..");
+        const rootNodeModules = path.join(workspaceRoot, "node_modules");
+        const destNodeModules = path.join(buildPath, "node_modules");
+
+        if (fs.existsSync(rootNodeModules)) {
+          fs.cpSync(rootNodeModules, destNodeModules, {
+            recursive: true,
+            force: false, // don't overwrite files packages/app/node_modules already provided
+            errorOnExist: false,
+          });
+          console.log("Copied hoisted root node_modules into packaged app.");
+        }
+        callback();
+      },
+    ],
   },
   rebuildConfig: {
     onlyModules: ["better-sqlite3"],
   },
   hooks: {
-    // Bundled pg_dump/pg_restore binaries (from theseus-rs/postgresql-binaries)
-    // carry macOS's quarantine attribute the moment they're copied into
-    // the .app bundle during packaging. Without stripping it here, a
-    // customer who's already approved the main app once would still hit
-    // a separate, confusing "Apple could not verify..." warning the
-    // first time backup/restore tries to run pg_dump — for a file
-    // they've never heard of. Stripping quarantine at package time means
-    // that never happens: by the time the DMG reaches a customer, these
-    // binaries were never quarantined in the first place.
     postPackage: async (forgeConfig, options) => {
       if (process.platform !== "darwin") return;
 
