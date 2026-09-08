@@ -1,6 +1,5 @@
 const { FusesPlugin } = require("@electron-forge/plugin-fuses");
 const { FuseV1Options, FuseVersion } = require("@electron/fuses");
-
 const {
   AutoUnpackNativesPlugin,
 } = require("@electron-forge/plugin-auto-unpack-natives");
@@ -12,7 +11,6 @@ module.exports = {
     extraResource: ["../db-setup/bin", "resources/send-raw-print.ps1"],
     ignore: (file) => {
       if (!file) return false;
-
       return !(
         file.startsWith("/.vite") ||
         file === "/package.json" ||
@@ -21,26 +19,43 @@ module.exports = {
     },
     afterCopy: [
       (buildPath, electronVersion, platform, arch, callback) => {
-        // npm workspace hoisting puts these native modules only in the
-        // repo root's node_modules, invisible to Forge's packager (which
-        // only ever looks inside packages/app/node_modules). Copy them
-        // in manually so the packaged app actually has the real .node
-        // binaries it needs at runtime.
+        // npm workspace hoisting puts these modules only in the repo
+        // root's node_modules, invisible to Forge's packager (which only
+        // ever looks inside packages/app/node_modules). Copy just these
+        // specific ones in manually — NOT the whole node_modules tree,
+        // since that would ship dev-only tooling (electron itself, vite,
+        // every Forge plugin) into the customer-facing installer,
+        // doubling its size for no reason.
         const fs = require("fs");
         const path = require("path");
-
         const workspaceRoot = path.join(__dirname, "..", "..");
-        const rootNodeModules = path.join(workspaceRoot, "node_modules");
-        const destNodeModules = path.join(buildPath, "node_modules");
 
-        if (fs.existsSync(rootNodeModules)) {
-          fs.cpSync(rootNodeModules, destNodeModules, {
-            recursive: true,
-            force: false, // don't overwrite files packages/app/node_modules already provided
-            errorOnExist: false,
-          });
-          console.log("Copied hoisted root node_modules into packaged app.");
+        const modulesToCopy = [
+          "pg",
+          "pg-pool",
+          "pg-protocol",
+          "pg-types",
+          "pg-connection-string",
+          "pg-int8",
+          "pgpass",
+          "serialport",
+          "@serialport",
+          "ms",
+          "debug",
+        ];
+
+        for (const moduleName of modulesToCopy) {
+          const src = path.join(workspaceRoot, "node_modules", moduleName);
+          const dest = path.join(buildPath, "node_modules", moduleName);
+
+          if (fs.existsSync(src)) {
+            fs.cpSync(src, dest, { recursive: true });
+            console.log(`Copied hoisted module: ${moduleName}`);
+          } else {
+            console.warn(`Hoisted module not found at ${src}, skipping`);
+          }
         }
+
         callback();
       },
     ],
@@ -51,10 +66,8 @@ module.exports = {
   hooks: {
     postPackage: async (forgeConfig, options) => {
       if (process.platform !== "darwin") return;
-
       const { execSync } = require("child_process");
       const path = require("path");
-
       for (const outputPath of options.outputPaths) {
         const binPath = path.join(
           outputPath,
