@@ -1,5 +1,6 @@
 const { FusesPlugin } = require("@electron-forge/plugin-fuses");
 const { FuseV1Options, FuseVersion } = require("@electron/fuses");
+
 const {
   AutoUnpackNativesPlugin,
 } = require("@electron-forge/plugin-auto-unpack-natives");
@@ -8,7 +9,7 @@ module.exports = {
   packagerConfig: {
     asar: true,
     icon: "build/icons/icon",
-    extraResource: ["../db-setup/bin"],
+    extraResource: ["../db-setup/bin", "resources/send-raw-print.ps1"],
     ignore: (file) => {
       if (!file) return false;
 

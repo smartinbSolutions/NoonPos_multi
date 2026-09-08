@@ -46,6 +46,10 @@ jobs:
             fi
           fi
 
+      - name: Debug — list extracted Postgres binaries
+        shell: bash
+        run: find packages/db-setup/bin -maxdepth 4
+
       - name: Rebuild native modules for Electron
         working-directory: packages/app
         run: npx electron-rebuild -f -w better-sqlite3
