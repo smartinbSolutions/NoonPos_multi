@@ -16,6 +16,8 @@ import {
 } from "../utils/helpers";
 import { applyPartyCredit } from "../utils/partyCredit";
 import { query, getClient } from "../dbConnect.js";
+import getDeviceHash from "../../main/license/getDeviceHash";
+import { printViaRawEscpos } from "../services/rawPrintService";
 
 const escapeHtml = (value) =>
   String(value ?? "")
@@ -1822,6 +1824,17 @@ export default function registerSalesInvoiceIPC() {
     );
     const companySettings = settingsRows[0];
 
+    // Look up THIS terminal's default printer — same pattern as
+    // test-print, except by is_default rather than a user-picked device
+    // name, since POS checkout should always target whichever printer
+    // this terminal has configured as default, not one named per sale.
+    const deviceId = await getDeviceHash();
+    const { rows: printerRows } = await query(
+      `SELECT * FROM printer_settings WHERE device_id = $1 AND is_default = true`,
+      [deviceId],
+    );
+    const printerSettings = printerRows[0];
+
     const language = getReceiptLanguage(
       data.language || companySettings?.language,
     );
@@ -1831,14 +1844,11 @@ export default function registerSalesInvoiceIPC() {
       companySettings?.company_name ||
       companySettings?.company_latin_name ||
       "POS System";
-
     const items = data.items || [];
-
     const hasAnyItemDiscount = items.some(
       (item) => Number(item.discount || 0) > 0,
     );
     const hasAnyItemTax = items.some((item) => Number(item.taxValue || 0) > 0);
-
     const itemsHtml = items
       .map((item) => {
         const total = Number(item.total || 0);
@@ -1855,21 +1865,17 @@ export default function registerSalesInvoiceIPC() {
     `;
       })
       .join("");
-
     const subtotal = Number(data.subtotal || 0);
     const itemDiscountTotal = Number(data.itemDiscountTotal || 0);
     const itemTaxTotal = Number(data.itemTaxTotal || 0);
     const invoiceDiscount = Number(data.invoiceDiscount || 0);
-
     const taxLines = (data.taxes || [])
       .filter((tax) => Number(tax.value || 0) > 0)
       .map((tax) => ({
         label: `${tax.name} (${tax.rate}%)`,
         value: Number(tax.value || 0),
       }));
-
     const invoiceTaxTotal = taxLines.reduce((sum, t) => sum + t.value, 0);
-
     const taxLinesHtml = taxLines
       .map(
         (t) => `
@@ -1877,7 +1883,6 @@ export default function registerSalesInvoiceIPC() {
   `,
       )
       .join("");
-
     const html = buildReceiptHtml({
       companyName: escapeHtml(companyName),
       labels,
@@ -1900,6 +1905,20 @@ export default function registerSalesInvoiceIPC() {
       hasAnyItemTax,
     });
 
-    return printReceiptHtml(html, data.printerName);
+    if (!printerSettings) {
+      // No default printer configured yet for this terminal — fall back to
+      // Electron's default print target, same behavior as before.
+      return printReceiptHtml(html, data.printerName);
+    }
+
+    if (printerSettings.backend === "raw_escpos") {
+      return printViaRawEscpos(html, {
+        deviceName: printerSettings.device_name,
+        paperSize: printerSettings.paper_size,
+        hasCutter: Boolean(printerSettings.has_cutter),
+      });
+    }
+
+    return printReceiptHtml(html, printerSettings.device_name);
   });
 }

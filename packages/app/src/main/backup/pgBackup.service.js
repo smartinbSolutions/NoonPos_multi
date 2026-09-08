@@ -5,6 +5,9 @@ import path from "node:path";
 
 import { getPgDumpPath, getPgRestorePath } from "../db/pgBinPaths.js";
 import { loadDbConfig } from "../db/dbConnectionConfig.js";
+import { loadAdminConfig } from "@noonpos/db-setup/configStore.js";
+import { getPaths as getWindowsPaths } from "@noonpos/db-setup/platform/windows.js";
+import { getPaths as getMacPaths } from "@noonpos/db-setup/platform/mac.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -14,12 +17,20 @@ function buildBackupFileName() {
   return `noonpos-backup-${stamp}.dump`;
 }
 
+function getPlatformPaths() {
+  if (process.platform === "win32") return getWindowsPaths();
+  if (process.platform === "darwin") return getMacPaths();
+  return null;
+}
+
 /**
- * Runs pg_dump against the LOCAL Postgres instance (config.host is always
- * loopback here, since this only ever runs on the host machine — callers
- * must check isDbHostMachine() first). Safe to run at any time: pg_dump
- * takes a consistent MVCC snapshot without blocking or being blocked by
- * other terminals actively using the database.
+ * Runs pg_dump against Postgres using the app_user's own saved
+ * connection (config.host may be loopback on the host, or the host's
+ * LAN IP on a guest terminal — either way, pg_dump just needs network
+ * access, not local execution). Safe to run at any time, from any
+ * terminal: pg_dump takes a consistent MVCC snapshot without blocking
+ * or being blocked by other terminals actively using the database, and
+ * only needs read access, which app_user already has.
  *
  * Uses custom format (-F c): compressed, supports selective restore, and
  * is Postgres's own recommended format over plain SQL.
@@ -68,25 +79,42 @@ export async function pgDumpBackup({ targetFolder }) {
  * cannot safely drop/recreate objects while other sessions hold locks on
  * them.
  *
+ * HOST-ONLY, structurally: a --clean restore does DDL (CREATE TABLE,
+ * ALTER TABLE ... ADD IDENTITY) that requires ownership of the public
+ * schema — rights app_user was deliberately never granted (see
+ * createDatabase.js). Only the Postgres SUPERUSER can do this, and its
+ * credentials live only in pg-admin.json on the host machine — never
+ * distributed to guest terminals. Callers must still check
+ * isDbHostMachine() before calling this; if that check ever gets
+ * skipped, this function fails cleanly with RESTORE_REQUIRES_HOST_SUPERUSER
+ * rather than silently trying (and crashing) with the wrong credentials.
+ *
  * --no-owner: the dump may have been created under a different OS-level
  * role than the one restoring it; without this flag, pg_restore can fail
  * trying to ALTER OWNER to a role that doesn't exist on this instance.
  */
 export async function pgRestoreBackup({ backupFilePath }) {
-  const config = loadDbConfig();
-  if (!config) {
+  const platformPaths = getPlatformPaths();
+  const adminConfig = platformPaths ? loadAdminConfig(platformPaths) : null;
+
+  if (!adminConfig?.superuser || !adminConfig?.superuserPassword) {
+    return { success: false, error: "RESTORE_REQUIRES_HOST_SUPERUSER" };
+  }
+
+  const appConfig = loadDbConfig();
+  if (!appConfig) {
     return { success: false, error: "NO_DB_CONFIG" };
   }
 
   const args = [
     "-h",
-    config.host,
+    adminConfig.host,
     "-p",
-    String(config.port),
+    String(adminConfig.port),
     "-U",
-    config.user,
+    adminConfig.superuser,
     "-d",
-    config.database,
+    appConfig.database,
     "--clean",
     "--if-exists",
     "--no-owner",
@@ -95,7 +123,7 @@ export async function pgRestoreBackup({ backupFilePath }) {
 
   try {
     await execFileAsync(getPgRestorePath(), args, {
-      env: { ...process.env, PGPASSWORD: config.password },
+      env: { ...process.env, PGPASSWORD: adminConfig.superuserPassword },
     });
     return { success: true };
   } catch (err) {

@@ -2,10 +2,12 @@
 import { ipcMain } from "electron";
 import {
   hasDbConfig,
+  isDbHostMachine,
   loadDbConfig,
   saveDbConfig,
 } from "./dbConnectionConfig.js";
 import { testDbConnection } from "./testDbConnection.js";
+import { resetPool } from "../../backend/dbConnect.js";
 
 export default function registerDbSetupIPC() {
   ipcMain.handle("db:hasConfig", async () => hasDbConfig());
@@ -25,6 +27,7 @@ export default function registerDbSetupIPC() {
     }
 
     saveDbConfig(config);
+    await resetPool();
     return { success: true };
   });
 
@@ -33,6 +36,10 @@ export default function registerDbSetupIPC() {
     // connect on startup) — never exposed for the renderer to display
     // the password back to the user.
     return loadDbConfig();
+  });
+
+  ipcMain.handle("db:isHost", async () => {
+    return { isHost: isDbHostMachine() };
   });
 
   // Verifies the ALREADY-SAVED config still actually works — distinct

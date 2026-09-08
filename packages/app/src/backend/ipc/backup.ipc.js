@@ -4,7 +4,10 @@ import os from "os";
 import path from "path";
 import { query } from "../dbConnect.js";
 import { verifyPin } from "../utils/authCrypto";
-import { loadDbConfig } from "../../main/db/dbConnectionConfig.js";
+import {
+  loadDbConfig,
+  isDbHostMachine,
+} from "../../main/db/dbConnectionConfig.js";
 import {
   getBackupSettings,
   updateBackupSettings,
@@ -112,22 +115,38 @@ export default function registerBackupIPC() {
     }
   });
 
-  // CREATE A BACKUP NOW — thin wrapper; the actual pg_dump logic lives in
-  // runBackupNow() so the scheduler can call the exact same path without
-  // going through an IPC round-trip to itself. Available from any
-  // terminal — pg_dump connects to the host over the network.
-  ipcMain.handle("backup-create", async (event, { targetFolder } = {}) => {
+  // CREATE A BACKUP NOW — available from any terminal (pg_dump only
+  // needs read access, which app_user already has). Admin-gated: PIN +
+  // recovery key both required, same as restore, since a backup file is
+  // a full copy of every customer, sale, and price in the business.
+  ipcMain.handle("backup-create", async (event, data = {}) => {
+    const { targetFolder, administratorId, administratorPin, recoveryKey } =
+      data;
+
+    const admin = await activeAdmin(administratorId);
+    const { rows: settingRows } = await query(
+      "SELECT recovery_key_hash FROM security_settings WHERE id = 1",
+    );
+    const setting = settingRows[0];
+
+    if (
+      !admin ||
+      !verifyPin(administratorPin, admin.pin_hash) ||
+      !setting ||
+      !verifyPin(recoveryKey, setting.recovery_key_hash)
+    ) {
+      return { success: false, error: "BACKUP_AUTH_FAILED" };
+    }
+
     return runBackupNow({ targetFolder });
   });
 
-  // RESTORE FROM A BACKUP FILE — strict gate: active admin's own PIN AND
-  // the recovery key, both required (mirrors auth:recover-admin-pin's
-  // verification calls, but neither alone is sufficient here since restore
-  // is more destructive than a PIN reset). Available from any terminal —
-  // pg_restore connects to the host over the network the same way any
-  // other query does; the admin PIN + recovery key check below is the
-  // real authorization boundary here, not which physical machine this
-  // runs from.
+  // RESTORE FROM A BACKUP FILE — HOST-ONLY, structurally: pg_restore's
+  // --clean rebuild needs the Postgres superuser's credentials (schema
+  // ownership rights app_user was deliberately never granted), and those
+  // credentials only ever exist in pg-admin.json on the host machine —
+  // never distributed to guest terminals. Also gated by admin PIN +
+  // recovery key, same as before.
   ipcMain.handle("backup-restore", async (event, data) => {
     const device = os.hostname();
     const backupFileName = path.basename(data.backupFilePath || "");
@@ -143,6 +162,10 @@ export default function registerBackupIPC() {
       });
       return { success: false, error };
     };
+
+    if (!isDbHostMachine()) {
+      return fail("RESTORE_ONLY_AVAILABLE_ON_HOST");
+    }
 
     try {
       if (!data.backupFilePath) return await fail("BACKUP_FILE_REQUIRED");
@@ -205,11 +228,27 @@ export default function registerBackupIPC() {
     }
   });
 
-  // UPLOAD A FRESH SNAPSHOT TO CLOUD BACKUP — entitlement, device
-  // activation, and the one-per-day cap are all enforced inside
-  // uploadCloudBackup() itself; this handler just calls the service and
-  // passes the result through.
-  ipcMain.handle("backup-cloud-upload", () => {
+  // UPLOAD A FRESH SNAPSHOT TO CLOUD BACKUP — available from any
+  // terminal, same reasoning as backup-create: pg_dump only needs read
+  // access. Admin-gated the same way.
+  ipcMain.handle("backup-cloud-upload", async (event, data = {}) => {
+    const { administratorId, administratorPin, recoveryKey } = data;
+
+    const admin = await activeAdmin(administratorId);
+    const { rows: settingRows } = await query(
+      "SELECT recovery_key_hash FROM security_settings WHERE id = 1",
+    );
+    const setting = settingRows[0];
+
+    if (
+      !admin ||
+      !verifyPin(administratorPin, admin.pin_hash) ||
+      !setting ||
+      !verifyPin(recoveryKey, setting.recovery_key_hash)
+    ) {
+      return { success: false, error: "BACKUP_AUTH_FAILED" };
+    }
+
     return uploadCloudBackup();
   });
 

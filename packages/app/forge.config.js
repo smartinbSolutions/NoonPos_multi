@@ -22,6 +22,42 @@ module.exports = {
   rebuildConfig: {
     onlyModules: ["better-sqlite3"],
   },
+  hooks: {
+    // Bundled pg_dump/pg_restore binaries (from theseus-rs/postgresql-binaries)
+    // carry macOS's quarantine attribute the moment they're copied into
+    // the .app bundle during packaging. Without stripping it here, a
+    // customer who's already approved the main app once would still hit
+    // a separate, confusing "Apple could not verify..." warning the
+    // first time backup/restore tries to run pg_dump — for a file
+    // they've never heard of. Stripping quarantine at package time means
+    // that never happens: by the time the DMG reaches a customer, these
+    // binaries were never quarantined in the first place.
+    postPackage: async (forgeConfig, options) => {
+      if (process.platform !== "darwin") return;
+
+      const { execSync } = require("child_process");
+      const path = require("path");
+
+      for (const outputPath of options.outputPaths) {
+        const binPath = path.join(
+          outputPath,
+          `${options.packagerConfig?.name || "NOON POS"}.app`,
+          "Contents",
+          "Resources",
+          "bin",
+        );
+        try {
+          execSync(`xattr -dr com.apple.quarantine "${binPath}"`);
+          console.log(`Stripped quarantine from ${binPath}`);
+        } catch (err) {
+          console.warn(
+            `Could not strip quarantine from ${binPath}:`,
+            err.message,
+          );
+        }
+      }
+    },
+  },
   makers: [
     {
       name: "@electron-forge/maker-squirrel",

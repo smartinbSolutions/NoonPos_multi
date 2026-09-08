@@ -27,7 +27,18 @@ function getPool() {
     idleTimeoutMillis: 30000,
   });
 
+  pool.on("error", (err) => {
+    console.error("Unexpected error on idle Postgres client:", err.message);
+  });
+
   return pool;
+}
+
+export async function resetPool() {
+  if (pool) {
+    await pool.end().catch(() => {});
+    pool = null;
+  }
 }
 
 /**

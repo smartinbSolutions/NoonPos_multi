@@ -295,6 +295,10 @@
       "testRequiredHint": "شغّل طباعة تجريبية ناجحة أولاً"
     },
     "backup": {
+      "scheduleHostOnlyTitle": "النسخ الاحتياطي التلقائي يعمل من الجهاز الرئيسي",
+      "scheduleHostOnlyHint": "هذا هو الجهاز الذي يستضيف قاعدة بياناتك. أدر الجدولة من هناك — لا يزال بإمكانك إنشاء نسخة احتياطية يدويًا من هنا في أي وقت.",
+      "backupNowTitle": "نسخ احتياطي الآن",
+      "cloudUploadTitle": "نسخ احتياطي إلى السحابة",
       "tabLocal": "محلي",
       "tabCloud": "سحابي",
       "cloudIncludedBadge": "مفعّل",
@@ -341,7 +345,9 @@
       "cloudDownloadFailed": "فشل التنزيل",
       "downloading": "جارٍ التنزيل...",
       "cloudAvailable": "النسخ الاحتياطية السحابية",
-      "cloudEmpty": "لا توجد نسخ احتياطية سحابية بعد."
+      "cloudEmpty": "لا توجد نسخ احتياطية سحابية بعد.",
+      "hostOnly": "الجهاز الرئيسي فقط",
+      "restoreHostOnlyHint": "الاستعادة متاحة فقط من الجهاز الرئيسي — لا يزال بإمكانك إنشاء نسخة احتياطية من هنا."
     },
     "currency": {
       "minorNamePlaceholder": "اسم الوحدة الفرعية",

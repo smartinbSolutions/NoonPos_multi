@@ -278,10 +278,9 @@ contextBridge.exposeInMainWorld("api", {
   updateBackupSettings: (data) =>
     ipcRenderer.invoke("backup-update-settings", data),
   chooseBackupFolder: () => ipcRenderer.invoke("backup-choose-folder"),
-  createBackup: (targetFolder) =>
-    ipcRenderer.invoke("backup-create", { targetFolder }),
+  createBackup: (data) => ipcRenderer.invoke("backup-create", data),
   restoreBackup: (data) => ipcRenderer.invoke("backup-restore", data),
-  uploadCloudBackup: () => ipcRenderer.invoke("backup-cloud-upload"),
+  uploadCloudBackup: (data) => ipcRenderer.invoke("backup-cloud-upload", data),
   listCloudBackups: () => ipcRenderer.invoke("backup-cloud-list"),
   downloadCloudBackup: (backupId) =>
     ipcRenderer.invoke("backup-cloud-download", backupId),
@@ -321,4 +320,5 @@ contextBridge.exposeInMainWorld("db", {
   testConnection: (config) => ipcRenderer.invoke("db:testConnection", config),
   saveConfig: (config) => ipcRenderer.invoke("db:saveConfig", config),
   checkSavedConnection: () => ipcRenderer.invoke("db:checkSavedConnection"),
+  isHost: () => ipcRenderer.invoke("db:isHost"),
 });

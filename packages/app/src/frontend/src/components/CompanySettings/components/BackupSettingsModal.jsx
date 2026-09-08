@@ -11,10 +11,13 @@ import {
   Cloud,
   Lock,
   CheckCircle2,
+  ShieldAlert,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { useAuth } from "../../../Global/AuthContext";
 import useBackupSettings from "../hooks/useBackupSettings";
 import RestoreConfirmModal from "./RestoreConfirmModal";
+import AdminCredentialsModal from "./AdminCredentialsModal";
 import { useLicense } from "../../../Global/LicenseContext";
 
 const WEEKDAY_INDEXES = [0, 1, 2, 3, 4, 5, 6];
@@ -64,6 +67,8 @@ function BackupRow({
   onRestoreClick,
   restoringLabel,
   isRestoring,
+  restoreDisabled,
+  restoreDisabledLabel,
 }) {
   const { t, i18n } = useTranslation();
   const date = new Date(dateValue);
@@ -71,7 +76,6 @@ function BackupRow({
     dateStyle: "medium",
     timeStyle: "short",
   });
-
   return (
     <div className="flex items-center justify-between gap-3 rounded-xl border border-gray-100 bg-white p-3">
       <div className="min-w-0">
@@ -80,12 +84,17 @@ function BackupRow({
       </div>
       <button
         type="button"
-        onClick={() => onRestoreClick(backup)}
-        disabled={isRestoring}
+        onClick={() => !restoreDisabled && onRestoreClick(backup)}
+        disabled={isRestoring || restoreDisabled}
+        title={restoreDisabled ? restoreDisabledLabel : undefined}
         className="flex shrink-0 items-center gap-1.5 rounded-lg border border-red-200 bg-white px-3 py-1.5 text-xs font-bold text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
       >
         <RotateCcw size={13} />
-        {isRestoring ? restoringLabel : t("screens.backup.restore", "Restore")}
+        {isRestoring
+          ? restoringLabel
+          : restoreDisabled
+            ? t("screens.backup.hostOnly", "Host only")
+            : t("screens.backup.restore", "Restore")}
       </button>
     </div>
   );
@@ -93,11 +102,13 @@ function BackupRow({
 
 export default function BackupSettingsModal({ isOpen, onClose }) {
   const { t, i18n } = useTranslation();
+  const { user } = useAuth();
   const hook = useBackupSettings({ enabled: isOpen });
   const { hasFeature } = useLicense();
   const cloudBackupEnabled = hasFeature("cloud_backup");
   const {
     settings,
+    isHost,
     backups,
     loading,
     loadingBackups,
@@ -117,6 +128,7 @@ export default function BackupSettingsModal({ isOpen, onClose }) {
 
   const [activeTab, setActiveTab] = useState("local");
   const [restoreTarget, setRestoreTarget] = useState(null);
+  const [pendingAction, setPendingAction] = useState(null); // "create" | "cloudUpload" | null
 
   if (!isOpen) return null;
 
@@ -150,6 +162,24 @@ export default function BackupSettingsModal({ isOpen, onClose }) {
     setRestoreTarget(result);
   };
 
+  const handleCredentialsConfirm = async ({ pin, recoveryKey }) => {
+    if (pendingAction === "create") {
+      return createBackupNow({
+        administratorId: user?.id,
+        administratorPin: pin,
+        recoveryKey,
+      });
+    }
+    if (pendingAction === "cloudUpload") {
+      return uploadToCloudNow({
+        administratorId: user?.id,
+        administratorPin: pin,
+        recoveryKey,
+      });
+    }
+    return { success: false };
+  };
+
   const tabButtonClass = (tab) =>
     `flex flex-1 items-center justify-center gap-1.5 rounded-xl border px-3 py-2.5 text-xs font-bold transition ${
       activeTab === tab
@@ -163,7 +193,6 @@ export default function BackupSettingsModal({ isOpen, onClose }) {
         className="absolute inset-0 bg-[#1c2340]/50 backdrop-blur-sm"
         onClick={onClose}
       />
-
       <div className="relative flex max-h-[85vh] w-full max-w-lg flex-col overflow-hidden rounded-[28px] bg-white shadow-[0_24px_80px_rgba(28,35,64,0.35)]">
         <div className="flex items-center justify-between border-b border-[#e9edfb] bg-[linear-gradient(135deg,#eef3ff_0%,#f8faff_100%)] px-6 py-5">
           <div className="flex items-center gap-3">
@@ -242,76 +271,105 @@ export default function BackupSettingsModal({ isOpen, onClose }) {
                     </div>
                   </SectionCard>
 
-                  <SectionCard>
-                    <div className="flex items-center justify-between">
-                      <label className="flex items-center gap-1.5 text-xs font-bold text-gray-700">
-                        <Clock size={14} />
-                        {t(
-                          "screens.backup.scheduleEnabled",
-                          "Automatic backups",
-                        )}
-                      </label>
-                      <Toggle
-                        checked={scheduleEnabled}
-                        onChange={() =>
-                          updateSettings({ scheduleEnabled: !scheduleEnabled })
-                        }
-                      />
-                    </div>
-
-                    {scheduleEnabled && (
-                      <div className="mt-3 grid grid-cols-2 gap-2">
-                        <select
-                          value={scheduleFrequency}
-                          onChange={(e) =>
+                  {/* Automatic backups — host-only. isHost is null while
+                      the db:isHost check is still resolving; treat that
+                      as "don't know yet" rather than assuming false, so
+                      the section doesn't flash hidden before the real
+                      answer comes back. */}
+                  {isHost === false ? (
+                    <SectionCard className="border-amber-100 bg-amber-50/60">
+                      <div className="flex items-start gap-2.5">
+                        <ShieldAlert
+                          size={16}
+                          className="mt-0.5 shrink-0 text-amber-600"
+                        />
+                        <div>
+                          <p className="text-xs font-bold text-amber-800">
+                            {t(
+                              "screens.backup.scheduleHostOnlyTitle",
+                              "Automatic backups run on the main register",
+                            )}
+                          </p>
+                          <p className="mt-0.5 text-xs text-amber-700">
+                            {t(
+                              "screens.backup.scheduleHostOnlyHint",
+                              "This is the machine that hosts your database. Manage the schedule from there — you can still create a backup manually here anytime.",
+                            )}
+                          </p>
+                        </div>
+                      </div>
+                    </SectionCard>
+                  ) : isHost === true ? (
+                    <SectionCard>
+                      <div className="flex items-center justify-between">
+                        <label className="flex items-center gap-1.5 text-xs font-bold text-gray-700">
+                          <Clock size={14} />
+                          {t(
+                            "screens.backup.scheduleEnabled",
+                            "Automatic backups",
+                          )}
+                        </label>
+                        <Toggle
+                          checked={scheduleEnabled}
+                          onChange={() =>
                             updateSettings({
-                              scheduleFrequency: e.target.value,
+                              scheduleEnabled: !scheduleEnabled,
                             })
                           }
-                          className="rounded-lg border border-gray-200 bg-white px-2.5 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-100"
-                        >
-                          <option value="daily">
-                            {t("screens.backup.daily", "Daily")}
-                          </option>
-                          <option value="weekly">
-                            {t("screens.backup.weekly", "Weekly")}
-                          </option>
-                        </select>
-
-                        <input
-                          type="time"
-                          value={scheduleTime}
-                          onChange={(e) =>
-                            updateSettings({ scheduleTime: e.target.value })
-                          }
-                          dir="ltr"
-                          className="rounded-lg border border-gray-200 bg-white px-2.5 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-100"
                         />
-
-                        {scheduleFrequency === "weekly" && (
+                      </div>
+                      {scheduleEnabled && (
+                        <div className="mt-3 grid grid-cols-2 gap-2">
                           <select
-                            value={scheduleDayOfWeek}
+                            value={scheduleFrequency}
                             onChange={(e) =>
                               updateSettings({
-                                scheduleDayOfWeek: Number(e.target.value),
+                                scheduleFrequency: e.target.value,
                               })
                             }
-                            className="col-span-2 rounded-lg border border-gray-200 bg-white px-2.5 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-100"
+                            className="rounded-lg border border-gray-200 bg-white px-2.5 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-100"
                           >
-                            {WEEKDAY_INDEXES.map((day) => (
-                              <option key={day} value={day}>
-                                {weekdayLabel(day)}
-                              </option>
-                            ))}
+                            <option value="daily">
+                              {t("screens.backup.daily", "Daily")}
+                            </option>
+                            <option value="weekly">
+                              {t("screens.backup.weekly", "Weekly")}
+                            </option>
                           </select>
-                        )}
-                      </div>
-                    )}
-                  </SectionCard>
+                          <input
+                            type="time"
+                            value={scheduleTime}
+                            onChange={(e) =>
+                              updateSettings({ scheduleTime: e.target.value })
+                            }
+                            dir="ltr"
+                            className="rounded-lg border border-gray-200 bg-white px-2.5 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-100"
+                          />
+                          {scheduleFrequency === "weekly" && (
+                            <select
+                              value={scheduleDayOfWeek}
+                              onChange={(e) =>
+                                updateSettings({
+                                  scheduleDayOfWeek: Number(e.target.value),
+                                })
+                              }
+                              className="col-span-2 rounded-lg border border-gray-200 bg-white px-2.5 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-100"
+                            >
+                              {WEEKDAY_INDEXES.map((day) => (
+                                <option key={day} value={day}>
+                                  {weekdayLabel(day)}
+                                </option>
+                              ))}
+                            </select>
+                          )}
+                        </div>
+                      )}
+                    </SectionCard>
+                  ) : null}
 
                   <button
                     type="button"
-                    onClick={createBackupNow}
+                    onClick={() => setPendingAction("create")}
                     disabled={creating}
                     className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#4663ff] py-2.5 text-sm font-bold text-white shadow-lg shadow-[#4663ff]/20 transition hover:bg-[#3854e8] disabled:cursor-not-allowed disabled:opacity-50"
                   >
@@ -339,6 +397,15 @@ export default function BackupSettingsModal({ isOpen, onClose }) {
                       </button>
                     </div>
 
+                    {isHost === false && (
+                      <p className="mb-2 flex items-center gap-1.5 text-[11px] font-bold text-amber-700">
+                        <ShieldAlert size={12} className="shrink-0" />
+                        {t(
+                          "screens.backup.restoreHostOnlyHint",
+                          "Restoring is only available from the main register — you can still create backups here.",
+                        )}
+                      </p>
+                    )}
                     {loadingBackups ? (
                       <p className="text-xs text-slate-400">
                         {t("common.loading")}
@@ -352,6 +419,11 @@ export default function BackupSettingsModal({ isOpen, onClose }) {
                             dateValue={backup.mtime}
                             sizeValue={backup.size}
                             onRestoreClick={setRestoreTarget}
+                            restoreDisabled={isHost === false}
+                            restoreDisabledLabel={t(
+                              "screens.backup.restoreHostOnlyHint",
+                              "Restoring is only available from the main register — you can still create backups here.",
+                            )}
                           />
                         ))}
                       </div>
@@ -412,7 +484,7 @@ export default function BackupSettingsModal({ isOpen, onClose }) {
                     <>
                       <button
                         type="button"
-                        onClick={uploadToCloudNow}
+                        onClick={() => setPendingAction("cloudUpload")}
                         disabled={uploadingCloud}
                         className="flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 py-2.5 text-sm font-bold text-white shadow-lg shadow-emerald-600/20 transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
                       >
@@ -424,12 +496,10 @@ export default function BackupSettingsModal({ isOpen, onClose }) {
                               "Back up to cloud now",
                             )}
                       </button>
-
                       <div>
                         <p className="mb-2 text-[10px] font-bold uppercase tracking-wide text-gray-400">
                           {t("screens.backup.cloudAvailable", "Cloud backups")}
                         </p>
-
                         {loadingCloudBackups ? (
                           <p className="text-xs text-slate-400">
                             {t("common.loading")}
@@ -447,6 +517,11 @@ export default function BackupSettingsModal({ isOpen, onClose }) {
                                 restoringLabel={t(
                                   "screens.backup.downloading",
                                   "Downloading...",
+                                )}
+                                restoreDisabled={isHost === false}
+                                restoreDisabledLabel={t(
+                                  "screens.backup.restoreHostOnlyHint",
+                                  "Restoring is only available from the main register — you can still create backups here.",
                                 )}
                               />
                             ))}
@@ -484,6 +559,34 @@ export default function BackupSettingsModal({ isOpen, onClose }) {
         onClose={() => setRestoreTarget(null)}
         backup={restoreTarget}
         hook={hook}
+      />
+
+      <AdminCredentialsModal
+        open={Boolean(pendingAction)}
+        onClose={() => setPendingAction(null)}
+        title={
+          pendingAction === "cloudUpload"
+            ? t("screens.backup.cloudUploadTitle", "Back up to cloud")
+            : t("screens.backup.backupNowTitle", "Back up now")
+        }
+        description={t(
+          "screens.backup.authRequired",
+          "Confirm your identity to proceed",
+        )}
+        confirmLabel={
+          pendingAction === "cloudUpload"
+            ? t("screens.backup.cloudUploadNow", "Back up to cloud now")
+            : t("screens.backup.backupNow", "Back up now")
+        }
+        confirmingLabel={
+          pendingAction === "cloudUpload"
+            ? t("screens.backup.cloudUploading", "Uploading...")
+            : t("screens.backup.creating", "Backing up...")
+        }
+        isConfirming={
+          pendingAction === "cloudUpload" ? uploadingCloud : creating
+        }
+        onConfirm={handleCredentialsConfirm}
       />
     </div>,
     document.body,

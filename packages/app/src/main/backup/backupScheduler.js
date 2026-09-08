@@ -1,3 +1,4 @@
+import { isDbHostMachine } from "../db/dbConnectionConfig";
 import { getBackupSettings, runBackupNow } from "./backupMeta.service";
 import { uploadCloudBackup } from "./cloudBackup.service";
 
@@ -38,6 +39,7 @@ function isScheduledNow(settings) {
 }
 
 async function checkAndRun() {
+  if (!isDbHostMachine()) return;
   const settingsResult = getBackupSettings();
 
   if (!settingsResult.success || !settingsResult.data) return;

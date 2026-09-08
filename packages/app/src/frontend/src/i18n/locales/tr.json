@@ -307,6 +307,10 @@
       "testRequiredHint": "Önce başarılı bir test yazdırma çalıştırın"
     },
     "backup": {
+      "scheduleHostOnlyTitle": "Otomatik yedeklemeler ana kasada çalışır",
+      "scheduleHostOnlyHint": "Bu, veritabanınızı barındıran makinedir. Programı oradan yönetin — buradan istediğiniz zaman manuel olarak yedekleme oluşturabilirsiniz.",
+      "backupNowTitle": "Şimdi yedekle",
+      "cloudUploadTitle": "Buluta yedekle",
       "tabLocal": "Yerel",
       "tabCloud": "Bulut",
       "cloudIncludedBadge": "Aktif",
@@ -353,7 +357,9 @@
       "cloudDownloadFailed": "İndirme başarısız",
       "downloading": "İndiriliyor...",
       "cloudAvailable": "Bulut yedekleri",
-      "cloudEmpty": "Henüz bulut yedeği yok."
+      "cloudEmpty": "Henüz bulut yedeği yok.",
+      "hostOnly": "Yalnızca ana kasa",
+      "restoreHostOnlyHint": "Geri yükleme yalnızca ana kasadan yapılabilir — buradan hâlâ yedekleme oluşturabilirsiniz."
     },
     "funds": {
       "transactionType": {

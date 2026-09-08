@@ -5,15 +5,14 @@ import { toast } from "react-toastify";
 export default function useBackupSettings({ enabled = true } = {}) {
   const { t } = useTranslation();
   const api = window.api;
-
   const [settings, setSettings] = useState(null);
   const [backups, setBackups] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [isHost, setIsHost] = useState(null);
   const [loadingBackups, setLoadingBackups] = useState(false);
   const [savingSettings, setSavingSettings] = useState(false);
   const [creating, setCreating] = useState(false);
   const [restoring, setRestoring] = useState(false);
-
   const [uploadingCloud, setUploadingCloud] = useState(false);
   const [cloudBackups, setCloudBackups] = useState([]);
   const [loadingCloudBackups, setLoadingCloudBackups] = useState(false);
@@ -80,6 +79,7 @@ export default function useBackupSettings({ enabled = true } = {}) {
       refetchSettings();
       refetchBackups();
       refetchCloudBackups();
+      window.db?.isHost().then((res) => setIsHost(Boolean(res?.isHost)));
     }
   }, [enabled, refetchSettings, refetchBackups, refetchCloudBackups]);
 
@@ -121,11 +121,21 @@ export default function useBackupSettings({ enabled = true } = {}) {
     return picked.filePath;
   };
 
-  const createBackupNow = async () => {
+  const createBackupNow = async ({
+    targetFolder,
+    administratorId,
+    administratorPin,
+    recoveryKey,
+  } = {}) => {
     if (!api) return;
     try {
       setCreating(true);
-      const res = await api.createBackup();
+      const res = await api.createBackup({
+        targetFolder,
+        administratorId,
+        administratorPin,
+        recoveryKey,
+      });
       if (res?.success) {
         toast.success(t("screens.backup.createSuccess", "Backup created"));
         await refetchSettings();
@@ -185,12 +195,19 @@ export default function useBackupSettings({ enabled = true } = {}) {
     }
   };
 
-  const uploadToCloudNow = async () => {
+  const uploadToCloudNow = async ({
+    administratorId,
+    administratorPin,
+    recoveryKey,
+  } = {}) => {
     if (!api) return;
     try {
       setUploadingCloud(true);
-      const res = await api.uploadCloudBackup();
-
+      const res = await api.uploadCloudBackup({
+        administratorId,
+        administratorPin,
+        recoveryKey,
+      });
       if (res?.success) {
         toast.success(
           t("screens.backup.cloudUploadSuccess", "Uploaded to cloud"),
@@ -252,12 +269,12 @@ export default function useBackupSettings({ enabled = true } = {}) {
   return {
     settings,
     loading,
+    isHost,
     savingSettings,
     updateSettings,
     chooseAndSaveFolder,
     chooseRestoreFile,
     refetchSettings,
-
     backups,
     loadingBackups,
     creating,
@@ -265,7 +282,6 @@ export default function useBackupSettings({ enabled = true } = {}) {
     createBackupNow,
     restoreBackup,
     refetchBackups,
-
     uploadingCloud,
     cloudBackups,
     loadingCloudBackups,

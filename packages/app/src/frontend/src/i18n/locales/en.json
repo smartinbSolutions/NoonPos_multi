@@ -294,6 +294,10 @@
       "testRequiredHint": "Run a successful test print first"
     },
     "backup": {
+      "scheduleHostOnlyTitle": "Automatic backups run on the main register",
+      "scheduleHostOnlyHint": "This is the machine that hosts your database. Manage the schedule from there — you can still create a backup manually here anytime.",
+      "backupNowTitle": "Back up now",
+      "cloudUploadTitle": "Back up to cloud",
       "tabLocal": "Local",
       "tabCloud": "Cloud",
       "cloudIncludedBadge": "Active",
@@ -340,7 +344,9 @@
       "cloudDownloadFailed": "Download failed",
       "downloading": "Downloading...",
       "cloudAvailable": "Cloud backups",
-      "cloudEmpty": "No cloud backups yet."
+      "cloudEmpty": "No cloud backups yet.",
+      "hostOnly": "Host only",
+      "restoreHostOnlyHint": "Restoring is only available from the main register — you can still create backups here."
     },
     "currency": {
       "minorNamePlaceholder": "Minor unit name",
