@@ -34,15 +34,35 @@ jobs:
           if [ "${{ runner.os }}" == "Windows" ]; then
             curl -L -o pg.zip "https://github.com/theseus-rs/postgresql-binaries/releases/download/18.4.0/postgresql-18.4.0-x86_64-pc-windows-msvc.zip"
             unzip pg.zip -d packages/db-setup/bin/win
+            # The zip extracts into a nested versioned folder
+            # (postgresql-18.4.0-x86_64-pc-windows-msvc/) — flatten it so
+            # bin/win/bin/pg_dump.exe is the real path, matching what
+            # pgBinPaths.js expects.
+            if [ -d packages/db-setup/bin/win/postgresql-18.4.0-x86_64-pc-windows-msvc ]; then
+              mv packages/db-setup/bin/win/postgresql-18.4.0-x86_64-pc-windows-msvc/* packages/db-setup/bin/win/
+              rmdir packages/db-setup/bin/win/postgresql-18.4.0-x86_64-pc-windows-msvc
+            fi
           else
             if [ "${{ runner.arch }}" == "ARM64" ]; then
               curl -L -o pg.tar.gz "https://github.com/theseus-rs/postgresql-binaries/releases/download/18.4.0/postgresql-18.4.0-aarch64-apple-darwin.tar.gz"
               mkdir -p packages/db-setup/bin/mac-arm64
               tar -xzf pg.tar.gz -C packages/db-setup/bin/mac-arm64
+              # Same defensive flatten in case the tarball also nests
+              # under a versioned folder on this runner.
+              nested=$(find packages/db-setup/bin/mac-arm64 -maxdepth 1 -type d -name "postgresql-*")
+              if [ -n "$nested" ]; then
+                mv "$nested"/* packages/db-setup/bin/mac-arm64/
+                rmdir "$nested"
+              fi
             else
               curl -L -o pg.tar.gz "https://github.com/theseus-rs/postgresql-binaries/releases/download/18.4.0/postgresql-18.4.0-x86_64-apple-darwin.tar.gz"
               mkdir -p packages/db-setup/bin/mac-x64
               tar -xzf pg.tar.gz -C packages/db-setup/bin/mac-x64
+              nested=$(find packages/db-setup/bin/mac-x64 -maxdepth 1 -type d -name "postgresql-*")
+              if [ -n "$nested" ]; then
+                mv "$nested"/* packages/db-setup/bin/mac-x64/
+                rmdir "$nested"
+              fi
             fi
           fi
 
