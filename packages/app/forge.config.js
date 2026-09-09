@@ -19,43 +19,88 @@ module.exports = {
     },
     afterCopy: [
       (buildPath, electronVersion, platform, arch, callback) => {
-        // npm workspace hoisting puts these modules only in the repo
-        // root's node_modules, invisible to Forge's packager (which only
-        // ever looks inside packages/app/node_modules). Copy just these
-        // specific ones in manually — NOT the whole node_modules tree,
-        // since that would ship dev-only tooling (electron itself, vite,
-        // every Forge plugin) into the customer-facing installer,
-        // doubling its size for no reason.
         const fs = require("fs");
         const path = require("path");
+        const { execSync } = require("child_process");
         const workspaceRoot = path.join(__dirname, "..", "..");
 
-        const modulesToCopy = [
-          "pg",
-          "pg-pool",
-          "pg-protocol",
-          "pg-types",
-          "pg-connection-string",
-          "pg-int8",
-          "pgpass",
-          "serialport",
-          "@serialport",
-          "ms",
-          "debug",
-        ];
-
-        for (const moduleName of modulesToCopy) {
-          const src = path.join(workspaceRoot, "node_modules", moduleName);
-          const dest = path.join(buildPath, "node_modules", moduleName);
-
-          if (fs.existsSync(src)) {
-            fs.cpSync(src, dest, { recursive: true });
-            console.log(`Copied hoisted module: ${moduleName}`);
+        // npm workspace hoisting puts production dependencies only in
+        // the repo root's node_modules, invisible to Forge's packager
+        // (which only ever looks inside packages/app/node_modules).
+        // Rather than hand-maintaining a list of package names (we
+        // missed several transitive deps doing it that way across a
+        // few builds), ask npm itself for the real, complete production
+        // dependency tree and copy exactly that. --omit=dev excludes
+        // build tooling (electron, vite, every Forge plugin) so the
+        // shipped installer doesn't balloon with things end users
+        // never need.
+        let modulePaths = [];
+        try {
+          const output = execSync("npm ls --omit=dev --all --parseable", {
+            cwd: workspaceRoot,
+            maxBuffer: 1024 * 1024 * 10,
+          }).toString();
+          modulePaths = output
+            .split("\n")
+            .map((line) => line.trim())
+            .filter((line) =>
+              line.includes(`${path.sep}node_modules${path.sep}`),
+            );
+        } catch (err) {
+          // npm ls exits non-zero on some benign warnings (peer dep
+          // mismatches etc.) but still prints valid output to stdout —
+          // use it if we got any, otherwise this is a real failure.
+          if (err.stdout) {
+            modulePaths = err.stdout
+              .toString()
+              .split("\n")
+              .map((line) => line.trim())
+              .filter((line) =>
+                line.includes(`${path.sep}node_modules${path.sep}`),
+              );
           } else {
-            console.warn(`Hoisted module not found at ${src}, skipping`);
+            console.error("Failed to run npm ls:", err.message);
           }
         }
 
+        let copiedCount = 0;
+        for (const modulePath of modulePaths) {
+          if (!fs.existsSync(modulePath)) continue;
+
+          // Skip the app's own package (noon_pos) and the workspace
+          // packages (@noonpos/db-setup*) — those aren't runtime
+          // node_modules deps, they're workspace-linked and already
+          // handled elsewhere (extraResource for db-setup's bin folder).
+          if (
+            modulePath.endsWith(`${path.sep}noon_pos`) ||
+            modulePath.includes(`${path.sep}@noonpos${path.sep}`)
+          ) {
+            continue;
+          }
+
+          const relative = path.relative(
+            path.join(workspaceRoot, "node_modules"),
+            modulePath,
+          );
+          // Skip anything not actually rooted under the workspace's own
+          // node_modules (npm ls can list nested/duplicated paths too;
+          // relative starting with ".." means it's outside that tree).
+          if (relative.startsWith("..")) continue;
+
+          const dest = path.join(buildPath, "node_modules", relative);
+          if (fs.existsSync(dest)) continue; // already present, don't overwrite
+
+          try {
+            fs.cpSync(modulePath, dest, { recursive: true });
+            copiedCount++;
+          } catch (err) {
+            console.warn(`Failed to copy ${relative}:`, err.message);
+          }
+        }
+
+        console.log(
+          `Copied ${copiedCount} hoisted production dependencies into packaged app.`,
+        );
         callback();
       },
     ],
