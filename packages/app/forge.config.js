@@ -67,14 +67,14 @@ module.exports = {
         for (const modulePath of modulePaths) {
           if (!fs.existsSync(modulePath)) continue;
 
-          // Skip the app's own package (noon_pos) and the workspace
-          // packages (@noonpos/db-setup*) — those aren't runtime
-          // node_modules deps, they're workspace-linked and already
-          // handled elsewhere (extraResource for db-setup's bin folder).
-          if (
-            modulePath.endsWith(`${path.sep}noon_pos`) ||
-            modulePath.includes(`${path.sep}@noonpos${path.sep}`)
-          ) {
+          // Skip only the app's own package itself — @noonpos/db-setup
+          // and @noonpos/db-setup-cli DO need copying too: their JS code
+          // (configStore.js, platform/windows.js, platform/mac.js) is
+          // required at runtime by autoProvisionLocalDbConfig() and
+          // pgBinPaths.js. extraResource only ever copied db-setup's
+          // bin/ binaries — never its actual source code — which is why
+          // auto-provisioning silently failed on the host in testing.
+          if (modulePath.endsWith(`${path.sep}noon_pos`)) {
             continue;
           }
 
